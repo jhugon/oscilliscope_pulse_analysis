@@ -5,15 +5,15 @@ import numpy as np
 import datetime
 import h5py
 
-ip = "192.168.55.2"
-
 import vxi11
-instr =  vxi11.Instrument(ip)
-idn = instr.ask("*IDN?")
-## write, read, and ask: write then read
 
-if "MSO5354" in idn:
-    print("Preparing...")
+MODEL = "MSO5354"
+
+def setup_vert(ip):
+    instr =  vxi11.Instrument(ip)
+    idn = instr.ask("*IDN?")
+    if not (MODEL in idn):
+        raise Exception(f"Instrument at ")
     instr.write(":channel1:display on")
     instr.write(":channel1:scale 200e-3") # 200 mV
     instr.write(":channel1:offset 0")
@@ -21,6 +21,12 @@ if "MSO5354" in idn:
     instr.write(":channel1:coupling dc")
     instr.write(":channel1:bwlimit 20M") # off 20M 100M 200M
 
+
+def setup_horiz(ip):
+    instr =  vxi11.Instrument(ip)
+    idn = instr.ask("*IDN?")
+    if not (MODEL in idn):
+        raise Exception(f"Instrument at ")
     instr.write(":timebase:delay:enable off")
     instr.write(":timebase:scale 100e-9") # 100 ns
     instr.write(":timebase:offset 0")
@@ -28,6 +34,11 @@ if "MSO5354" in idn:
     instr.write(":timebase:href:mode center")
     instr.write(":timebase:href:position 0")
 
+def setup_trig(ip):
+    instr =  vxi11.Instrument(ip)
+    idn = instr.ask("*IDN?")
+    if not (MODEL in idn):
+        raise Exception(f"Instrument at ")
     instr.write(":trigger:sweep normal") # auto normal single
     instr.write(":trigger:coupling dc")
     instr.write(":trigger:holdoff 8e-9")
@@ -37,16 +48,21 @@ if "MSO5354" in idn:
     instr.write(":trigger:edge:slope positive")
     instr.write(":trigger:edge:level 12e-3")
 
+def collect_counter_data(ip):
+    instr =  vxi11.Instrument(ip)
+    idn = instr.ask("*IDN?")
+    if not (MODEL in idn):
+        raise Exception(f"Instrument at ")
     instr.write(":counter:enable on")
     instr.write(":counter:source channel1")
     instr.write(":counter:mode totalize") # frequency period totalize
     #trigger_values = np.linspace(-2,15,17*2)
     trig_max = 600
-    trig_min = 0
+    trig_min = 300
     #trig_n_vals = (trig_max-trig_min)*4+1
-    trig_n_vals = 61
+    trig_n_vals = 11
     trigger_values = np.linspace(trig_min,trig_max,trig_n_vals)
-    time_per_trig_val = 2
+    time_per_trig_val = 5
     print(f"Spending {time_per_trig_val} s triggering on each of {trig_n_vals} values between {trig_min} and {trig_max} mV")
     now = datetime.datetime.now().replace(microsecond=0)
     out_file_name = "raw_{}.hdf5".format(now.isoformat())
@@ -65,5 +81,10 @@ if "MSO5354" in idn:
             count = instr.ask(":counter:current?")
             counts[i] = count
             print("Count for {} mV trigger: {}".format(trig_val,count))
-else:
-    print("Instrument isn't MSO5354")
+
+if __name__ == "__main__":
+    ip = "192.168.55.2"
+    setup_vert(ip)
+    setup_horiz(ip)
+    setup_trig(ip)
+    collect_counter_data(ip)
