@@ -10,6 +10,7 @@ python-vxi11 = "*"
 numpy = "*"
 matplotlib = "*"
 h5py = "*"
+scipy = "*"
 
 [dev-packages]
 

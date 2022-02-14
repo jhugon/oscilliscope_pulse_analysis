@@ -90,21 +90,42 @@ def collect_counter_data(ip,out_file,trigger_values,time_per_trig_val):
         counts[i] = count
         print("Count for {} mV trigger: {}".format(trig_val,count))
 
-if __name__ == "__main__":
-    ip = "192.168.55.2"
-    setup_vert(ip,500e-3,0,probe=1,bwlimit="20M")
-    setup_horiz(ip,500e-9,0)
-    setup_trig(ip,-200e-3)
-
+def normal_counts(ip):
+    now = datetime.datetime.now().replace(microsecond=0)
+    setup_vert(ip,200e-3,-400e-3,probe=1,bwlimit="20M")
+    setup_horiz(ip,100e-9,0)
+    setup_trig(ip,100e-3)
+    time_per_trig_val = 1
     trig_max = 500
     trig_min = 0
-    trig_n_vals = 51
+    trig_n_vals = 11
     trigger_values = np.linspace(trig_min,trig_max,trig_n_vals)
-    time_per_trig_val = 3
-
     print(f"Spending {time_per_trig_val} s triggering on each of {trig_n_vals} values between {trig_min} and {trig_max} mV")
-    now = datetime.datetime.now().replace(microsecond=0)
     out_file_name = "counts_{}_{:d}trigs_{:.0f}to{:.0f}mV_{:.0f}s.hdf5".format(now.isoformat(),trig_n_vals,trig_min,trig_max,time_per_trig_val)
     print(f"Output filename is: {out_file_name}")
     with h5py.File(out_file_name,"w") as out_file:
         collect_counter_data(ip,out_file,trigger_values,time_per_trig_val)
+
+def max_resolution_counts(ip):
+    """
+    trigger must be a multiple of 8 mV
+    """
+    now = datetime.datetime.now().replace(microsecond=0)
+    setup_vert(ip,200e-3,-400e-3,probe=1,bwlimit="20M")
+    setup_horiz(ip,100e-9,0)
+    setup_trig(ip,100e-3)
+    time_per_trig_val = 5
+    trigger_values = np.arange(0,500,8)
+    trig_max = trigger_values[-1]
+    trig_min = trigger_values[0]
+    trig_n_vals = len(trigger_values)
+    print(f"Spending {time_per_trig_val} s triggering on each of {trig_n_vals} values between {trig_min} and {trig_max} mV")
+    out_file_name = "counts_max_res_{}_{:d}trigs_{:.0f}to{:.0f}mV_{:.0f}s.hdf5".format(now.isoformat(),trig_n_vals,trig_min,trig_max,time_per_trig_val)
+    print(f"Output filename is: {out_file_name}")
+    with h5py.File(out_file_name,"w") as out_file:
+        collect_counter_data(ip,out_file,trigger_values,time_per_trig_val)
+
+if __name__ == "__main__":
+    ip = "192.168.55.2"
+    #normal_counts(ip)
+    max_resolution_counts(ip)
