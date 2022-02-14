@@ -15,11 +15,11 @@ idn = instr.ask("*IDN?")
 if "MSO5354" in idn:
     print("Preparing...")
     instr.write(":channel1:display on")
-    instr.write(":channel1:scale 5e-3") # 5 mV
+    instr.write(":channel1:scale 200e-3") # 200 mV
     instr.write(":channel1:offset 0")
     instr.write(":channel1:probe 1")
     instr.write(":channel1:coupling dc")
-    instr.write(":channel1:bwlimit off")
+    instr.write(":channel1:bwlimit 20M") # off 20M 100M 200M
 
     instr.write(":timebase:delay:enable off")
     instr.write(":timebase:scale 100e-9") # 100 ns
@@ -28,7 +28,6 @@ if "MSO5354" in idn:
     instr.write(":timebase:href:mode center")
     instr.write(":timebase:href:position 0")
 
-    
     instr.write(":trigger:sweep normal") # auto normal single
     instr.write(":trigger:coupling dc")
     instr.write(":trigger:holdoff 8e-9")
@@ -42,11 +41,12 @@ if "MSO5354" in idn:
     instr.write(":counter:source channel1")
     instr.write(":counter:mode totalize") # frequency period totalize
     #trigger_values = np.linspace(-2,15,17*2)
-    trig_max = 8
+    trig_max = 600
     trig_min = 0
-    trig_n_vals = (trig_max-trig_min)*2+1
+    #trig_n_vals = (trig_max-trig_min)*4+1
+    trig_n_vals = 61
     trigger_values = np.linspace(trig_min,trig_max,trig_n_vals)
-    time_per_trig_val = 1
+    time_per_trig_val = 2
     print(f"Spending {time_per_trig_val} s triggering on each of {trig_n_vals} values between {trig_min} and {trig_max} mV")
     now = datetime.datetime.now().replace(microsecond=0)
     out_file_name = "raw_{}.hdf5".format(now.isoformat())

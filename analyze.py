@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as mpl
 import h5py
 
-in_file_name = "raw_2022-02-12T16:56:16.hdf5"
+in_file_name = "raw_2022-02-14T15:03:42.hdf5"
 with h5py.File(in_file_name) as in_file:
     counts = in_file["counts"]
     trigger_values = in_file["trigger_values"]
