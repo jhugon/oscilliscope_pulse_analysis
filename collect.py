@@ -9,32 +9,46 @@ import vxi11
 
 MODEL = "MSO5354"
 
-def setup_vert(ip):
+def setup_vert(ip,scale,offset,probe=10,coupling="dc",bwlimit="off"):
+    """
+    scale and offset are floats in volts
+    probe is the int multiplier for the probe, so 10 for a 10x probe
+    coupling is dc or ac
+    bwlimit is off, 20M, 100M, or 200M
+    """
     instr =  vxi11.Instrument(ip)
     idn = instr.ask("*IDN?")
     if not (MODEL in idn):
-        raise Exception(f"Instrument at ")
+        raise Exception(f"Instrument at {ip} not a {MODEL}, it's a: {idn}")
     instr.write(":channel1:display on")
-    instr.write(":channel1:scale 200e-3") # 200 mV
-    instr.write(":channel1:offset 0")
-    instr.write(":channel1:probe 1")
-    instr.write(":channel1:coupling dc")
-    instr.write(":channel1:bwlimit 20M") # off 20M 100M 200M
+    instr.write(f":channel1:scale {scale:g}") # 200 mV
+    instr.write(f":channel1:offset {offset:g}")
+    instr.write(f":channel1:probe {probe:d}")
+    instr.write(f":channel1:coupling {coupling}")
+    instr.write(f":channel1:bwlimit {bwlimit}") # off 20M 100M 200M
 
 
-def setup_horiz(ip):
+def setup_horiz(ip,scale,offset):
+    """
+    scale and offset are floats in seconds
+    """
     instr =  vxi11.Instrument(ip)
     idn = instr.ask("*IDN?")
     if not (MODEL in idn):
-        raise Exception(f"Instrument at ")
+        raise Exception(f"Instrument at {ip} not a {MODEL}, it's a: {idn}")
     instr.write(":timebase:delay:enable off")
-    instr.write(":timebase:scale 100e-9") # 100 ns
-    instr.write(":timebase:offset 0")
+    instr.write(f":timebase:scale {scale:g}")
+    instr.write(f":timebase:offset {offset:g}")
     instr.write(":timebase:mode main")
     instr.write(":timebase:href:mode center")
     instr.write(":timebase:href:position 0")
 
-def setup_trig(ip):
+def setup_trig(ip,level):
+    """
+    assumes edge mode for now
+
+    level: float trigger level in volts
+    """
     instr =  vxi11.Instrument(ip)
     idn = instr.ask("*IDN?")
     if not (MODEL in idn):
@@ -46,45 +60,51 @@ def setup_trig(ip):
     instr.write(":trigger:mode edge")
     instr.write(":trigger:edge:source channel1")
     instr.write(":trigger:edge:slope positive")
-    instr.write(":trigger:edge:level 12e-3")
+    instr.write(f":trigger:edge:level {level:g}")
 
-def collect_counter_data(ip):
+def collect_counter_data(ip,out_file,trigger_values,time_per_trig_val):
+    """
+    out_file: open h5py file to write to
+    trigger_values: a list of trigger levels (in millivolts) to collect counter data for
+    time_per_trig_val: how long to count for each trigger value, in seconds
+    """
     instr =  vxi11.Instrument(ip)
     idn = instr.ask("*IDN?")
     if not (MODEL in idn):
-        raise Exception(f"Instrument at ")
+        raise Exception(f"Instrument at {ip} not a {MODEL}, it's a: {idn}")
     instr.write(":counter:enable on")
     instr.write(":counter:source channel1")
     instr.write(":counter:mode totalize") # frequency period totalize
-    #trigger_values = np.linspace(-2,15,17*2)
-    trig_max = 600
-    trig_min = 300
-    #trig_n_vals = (trig_max-trig_min)*4+1
-    trig_n_vals = 11
-    trigger_values = np.linspace(trig_min,trig_max,trig_n_vals)
-    time_per_trig_val = 5
-    print(f"Spending {time_per_trig_val} s triggering on each of {trig_n_vals} values between {trig_min} and {trig_max} mV")
-    now = datetime.datetime.now().replace(microsecond=0)
-    out_file_name = "raw_{}.hdf5".format(now.isoformat())
-    print(f"Output filename is: {out_file_name}")
-    with h5py.File(out_file_name,"w") as out_file:
-        trigger_values_ds = out_file.create_dataset("trigger_values",data=trigger_values)
-        trigger_values_ds.attrs["units"] = "mV"
-        counts = out_file.create_dataset("counts",len(trigger_values))
-        counts.attrs["time_interval"] = time_per_trig_val
-        counts.attrs["time_interval_units"] = "s"
-        for i, trig_val in enumerate(trigger_values):
-            instr.write(":trigger:edge:level {:f}".format(trig_val*1e-3))
-            time.sleep(0.5)
-            instr.write(":counter:totalize:clear")
-            time.sleep(time_per_trig_val)
-            count = instr.ask(":counter:current?")
-            counts[i] = count
-            print("Count for {} mV trigger: {}".format(trig_val,count))
+
+    trigger_values_ds = out_file.create_dataset("trigger_values",data=trigger_values)
+    trigger_values_ds.attrs["units"] = "mV"
+    counts = out_file.create_dataset("counts",len(trigger_values))
+    counts.attrs["time_interval"] = time_per_trig_val
+    counts.attrs["time_interval_units"] = "s"
+    for i, trig_val in enumerate(trigger_values):
+        instr.write(":trigger:edge:level {:f}".format(trig_val*1e-3))
+        time.sleep(0.5)
+        instr.write(":counter:totalize:clear")
+        time.sleep(time_per_trig_val)
+        count = instr.ask(":counter:current?")
+        counts[i] = count
+        print("Count for {} mV trigger: {}".format(trig_val,count))
 
 if __name__ == "__main__":
     ip = "192.168.55.2"
-    setup_vert(ip)
-    setup_horiz(ip)
-    setup_trig(ip)
-    collect_counter_data(ip)
+    setup_vert(ip,500e-3,0,probe=1,bwlimit="20M")
+    setup_horiz(ip,500e-9,0)
+    setup_trig(ip,-200e-3)
+
+    trig_max = 500
+    trig_min = 0
+    trig_n_vals = 51
+    trigger_values = np.linspace(trig_min,trig_max,trig_n_vals)
+    time_per_trig_val = 3
+
+    print(f"Spending {time_per_trig_val} s triggering on each of {trig_n_vals} values between {trig_min} and {trig_max} mV")
+    now = datetime.datetime.now().replace(microsecond=0)
+    out_file_name = "counts_{}_{:d}trigs_{:.0f}to{:.0f}mV_{:.0f}s.hdf5".format(now.isoformat(),trig_n_vals,trig_min,trig_max,time_per_trig_val)
+    print(f"Output filename is: {out_file_name}")
+    with h5py.File(out_file_name,"w") as out_file:
+        collect_counter_data(ip,out_file,trigger_values,time_per_trig_val)
