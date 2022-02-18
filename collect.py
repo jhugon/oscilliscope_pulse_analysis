@@ -5,6 +5,8 @@ import numpy as np
 import datetime
 import h5py
 
+import matplotlib.pyplot as mpl
+
 import vxi11
 
 MODEL = "MSO5354"
@@ -43,18 +45,19 @@ def setup_horiz(ip,scale,offset):
     instr.write(":timebase:href:mode center")
     instr.write(":timebase:href:position 0")
 
-def setup_trig(ip,level,holdoff):
+def setup_trig(ip,level,holdoff,sweep="normal"):
     """
     assumes edge mode for now
 
     level: float trigger level in volts
     holdoff: amount of time to holdoff from triggering
+    sweep: trigger mode: auto, normal, or single
     """
     instr =  vxi11.Instrument(ip)
     idn = instr.ask("*IDN?")
     if not (MODEL in idn):
         raise Exception(f"Instrument at ")
-    instr.write(":trigger:sweep normal") # auto normal single
+    instr.write(f":trigger:sweep {sweep}")
     instr.write(":trigger:coupling dc")
     instr.write(f":trigger:holdoff {holdoff}")
     instr.write(":trigger:nreject off") # noise rejection
@@ -97,6 +100,38 @@ def collect_counter_data(ip,out_file,trigger_values,time_per_trig_val):
         trigger_values_ds[i] = trigger_val_readback
         print("Count for set {} mV read {:.1f} mV trigger: {}".format(trig_val,trigger_val_readback,count))
 
+def collect_waveforms(ip,out_file_name,nwaveforms,source="channel1"):
+    instr =  vxi11.Instrument(ip)
+    idn = instr.ask("*IDN?")
+    if not (MODEL in idn):
+        raise Exception(f"Instrument at {ip} not a {MODEL}, it's a: {idn}")
+    instr.write(f":waveform:source {source}")
+    instr.write(":waveform:mode raw")
+    instr.write(":waveform:format byte")
+
+    instr.write(":stop")
+
+    xorigin = float(instr.ask(":waveform:xorigin?"))
+    xincrement = float(instr.ask(":waveform:xincrement?"))
+    yorigin = float(instr.ask(":waveform:yorigin?"))
+    yreference = float(instr.ask(":waveform:yreference?"))
+    yincrement = float(instr.ask(":waveform:yincrement?"))
+
+    waveform_length = 4096
+    time_raw = np.arange(waveform_length)
+    time_calib = time_raw*xincrement+xorigin
+
+    with h5py.File(out_file_name,"w") as out_file:
+        time_ds = out_file.create_dataset("time",data=time_calib)
+        waveforms = out_file.create_dataset("waveforms",(nwaveforms,waveform_length))
+        for i in range(nwaveforms):
+            instr.write(":single")
+            data_raw = instr.ask_raw(":waveform:data?".encode("ASCII"))
+            data_raw = np.frombuffer(data_raw,dtype=np.uint8)
+            data = (data_raw*1.-yreference-yorigin)*yincrement
+            waveforms[i,:] = data
+
+
 def normal_counts(ip):
     now = datetime.datetime.now().replace(microsecond=0)
     setup_vert(ip,200e-3,-400e-3,probe=1,bwlimit="20M")
@@ -135,4 +170,9 @@ def max_resolution_counts(ip):
 if __name__ == "__main__":
     ip = "192.168.55.2"
     #normal_counts(ip)
-    max_resolution_counts(ip)
+    #max_resolution_counts(ip)
+
+    setup_vert(ip,200e-3,-400e-3,probe=1,bwlimit="20M")
+    setup_horiz(ip,50e-9,0)
+    setup_trig(ip,200e-3,10e-6,sweep="single")
+    collect_waveforms(ip,"waveforms.hdf5",100)

@@ -32,3 +32,7 @@ A few quantized pulse sizes seem to be well populated for:
 - Output: 50 ohm
 
 with some red LED and series resistor (100 ohm?)
+
+## Manuals:
+
+[Rigol MSO5000 Programming Guide](https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-0906/0/-/-/-/-/MSO5_programming_guide.pdf)
