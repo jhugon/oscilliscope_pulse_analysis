@@ -17,3 +17,18 @@ Using a separate channel for each of 2x [ZFL-500LN+ amplifiers](https://www.mini
 - I: 55 mA
 - V trip: 17 V
 - I trip: 60 mA
+
+## Signal generator setup
+
+A few quantized pulse sizes seem to be well populated for:
+
+- Mode: pulse
+- Frequency: 10 kHz
+- HighL: 1.4 V
+- LowL: 0 V
+- Phase: 0
+- Width: 16 ns
+
+- Output: 50 ohm
+
+with some red LED and series resistor (100 ohm?)

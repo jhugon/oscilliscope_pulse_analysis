@@ -7,7 +7,8 @@ import matplotlib.pyplot as mpl
 import h5py
 
 #in_file_name = "counts_2022-02-14T15:43:17_51trigs_0to500mV_3s.hdf5"
-in_file_name = "counts_max_res_2022-02-14T16:47:46_29trigs_80to304mV_1s.hdf5"
+#in_file_name = "counts_max_res_2022-02-14T16:47:46_29trigs_80to304mV_1s.hdf5"
+in_file_name = "counts_max_res_2022-02-18T15:18:34_64trigs_344to848mV_1s.hdf5"
 with h5py.File(in_file_name) as in_file:
     counts = in_file["counts"]
     trigger_values = in_file["trigger_values"]
@@ -16,10 +17,12 @@ with h5py.File(in_file_name) as in_file:
 
     #x = np.linspace(trigger_values[0],trigger_values[-1],1000)
     x = np.linspace(80,350,1000)
+    x = np.linspace(350,750,1000)
     spline = UnivariateSpline(trigger_values[:],counts[:],s=len(counts))
     spline_deriv = spline.derivative()
 
     brackets=[(115,140),(250,260)]
+    brackets=[]
     peaks = []
     for bracket in brackets:
         res = minimize_scalar(spline_deriv,bracket)
