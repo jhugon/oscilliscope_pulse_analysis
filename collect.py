@@ -11,7 +11,7 @@ import vxi11
 
 MODEL = "MSO5354"
 
-def setup_vert(ip,scale,offset,probe=10,coupling="dc",bwlimit="off"):
+def setup_vert(ip,scale,offset,probe=10,coupling="dc",bwlimit="off",channel="channel1"):
     """
     scale and offset are floats in volts
     probe is the int multiplier for the probe, so 10 for a 10x probe
@@ -22,12 +22,12 @@ def setup_vert(ip,scale,offset,probe=10,coupling="dc",bwlimit="off"):
     idn = instr.ask("*IDN?")
     if not (MODEL in idn):
         raise Exception(f"Instrument at {ip} not a {MODEL}, it's a: {idn}")
-    instr.write(":channel1:display on")
-    instr.write(f":channel1:scale {scale:g}") # 200 mV
-    instr.write(f":channel1:offset {offset:g}")
-    instr.write(f":channel1:probe {probe:d}")
-    instr.write(f":channel1:coupling {coupling}")
-    instr.write(f":channel1:bwlimit {bwlimit}") # off 20M 100M 200M
+    instr.write(f":{channel}:display on")
+    instr.write(f":{channel}:scale {scale:g}") # 200 mV
+    instr.write(f":{channel}:offset {offset:g}")
+    instr.write(f":{channel}:probe {probe:d}")
+    instr.write(f":{channel}:coupling {coupling}")
+    instr.write(f":{channel}:bwlimit {bwlimit}") # off 20M 100M 200M
 
 
 def setup_horiz(ip,scale,offset):
@@ -45,7 +45,7 @@ def setup_horiz(ip,scale,offset):
     instr.write(":timebase:href:mode center")
     instr.write(":timebase:href:position 0")
 
-def setup_trig(ip,level,holdoff,sweep="normal"):
+def setup_trig(ip,level,holdoff,sweep="normal",channel="channel1"):
     """
     assumes edge mode for now
 
@@ -62,7 +62,7 @@ def setup_trig(ip,level,holdoff,sweep="normal"):
     instr.write(f":trigger:holdoff {holdoff}")
     instr.write(":trigger:nreject off") # noise rejection
     instr.write(":trigger:mode edge")
-    instr.write(":trigger:edge:source channel1")
+    instr.write(f":trigger:edge:source {channel}")
     instr.write(":trigger:edge:slope positive")
     instr.write(f":trigger:edge:level {level:g}")
 
@@ -108,6 +108,7 @@ def collect_waveforms(ip,out_file_name,nwaveforms,source="channel1"):
     instr.write(f":waveform:source {source}")
     instr.write(":waveform:mode raw")
     instr.write(":waveform:format byte")
+    #instr.write(":waveform:points 1000")
 
     instr.write(":stop")
 
@@ -116,18 +117,40 @@ def collect_waveforms(ip,out_file_name,nwaveforms,source="channel1"):
     yorigin = float(instr.ask(":waveform:yorigin?"))
     yreference = float(instr.ask(":waveform:yreference?"))
     yincrement = float(instr.ask(":waveform:yincrement?"))
+    waveform_length = int(instr.ask(":waveform:points?"))
+    #print(f":waveform:points? is {waveform_length}")
 
-    waveform_length = 4096
     time_raw = np.arange(waveform_length)
     time_calib = time_raw*xincrement+xorigin
 
     with h5py.File(out_file_name,"w") as out_file:
         time_ds = out_file.create_dataset("time",data=time_calib)
+        time_ds.attrs["units"] = "s"
+        time_ds.make_scale("sample time")
         waveforms = out_file.create_dataset("waveforms",(nwaveforms,waveform_length))
+        waveforms.attrs["units"] = "V"
+        waveforms.dims[0].label = "waveform number"
+        waveforms.dims[1].label = "time"
+        waveforms.dims[1].attach_scale(time_ds)
         for i in range(nwaveforms):
             instr.write(":single")
+            time.sleep(0.1)
+            instr.ask(":trigger:status?")
+            time.sleep(0.1)
+            trigger_status = instr.ask(":trigger:status?")
+            if trigger_status != "STOP":
+                raise Exception(f"Trigger status should be STOP for raw waveform reading, not {trigger_status}")
             data_raw = instr.ask_raw(":waveform:data?".encode("ASCII"))
-            data_raw = np.frombuffer(data_raw,dtype=np.uint8)
+            if data_raw[:1] != b"#":
+                raise Exception("Data should start with #")
+            nbytes_size = int(data_raw[1:2].decode("ascii"))
+            size = int(data_raw[2:2+nbytes_size].decode("ascii"))
+            data_start = 2+nbytes_size
+            data_endp1 = data_start+size
+            if size != waveform_length:
+                raise Exception(f"Data payload size {size} != {waveform_length} waveform_length")
+
+            data_raw = np.frombuffer(data_raw[data_start:data_endp1],dtype=np.uint8)
             data = (data_raw*1.-yreference-yorigin)*yincrement
             waveforms[i,:] = data
 
@@ -175,4 +198,5 @@ if __name__ == "__main__":
     setup_vert(ip,200e-3,-400e-3,probe=1,bwlimit="20M")
     setup_horiz(ip,50e-9,0)
     setup_trig(ip,200e-3,10e-6,sweep="single")
-    collect_waveforms(ip,"waveforms.hdf5",100)
+
+    collect_waveforms(ip,"waveforms.hdf5",10,source="channel1")
