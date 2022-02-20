@@ -8,6 +8,8 @@ from scipy import signal
 #from scipy import signal.windows
 import matplotlib.pyplot as mpl
 import h5py
+from hist import Hist
+import matplotlib.colors
 
 freq_cutoff = 200e6 # Hz
 
@@ -17,6 +19,9 @@ with h5py.File(in_file_name) as in_file:
     nWaveforms, waveform_len = waveforms.shape
     waveform_units = waveforms.attrs["units"]
     ts = waveforms.dims[1][0]
+    ts_broadcast, _ = np.broadcast_arrays(ts,waveforms)
+    print(ts.shape,waveforms.shape)
+    print(ts_broadcast.shape,_.shape)
     ts_units = ts.attrs["units"]
     sample_period = ts[1]-ts[0]
     sample_frequency = 1./sample_period
@@ -55,18 +60,24 @@ with h5py.File(in_file_name) as in_file:
     fig.savefig("waveform.png")
     fig.savefig("waveform.pdf")
 
+    ## slow!
+    waveform_hist = Hist.new.Reg(100,-200,200,name="time",label="Time [ns]").Reg(100,-200,900,name="waveform",label="Waveform [mV]").Double()
+    waveform_hist.fill(ts_broadcast[:,:].flatten()*1e9,waveforms_filtered[:,:].flatten()*1e3)
+    fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=False)
+    waveform_hist.plot2d(ax=ax,norm=matplotlib.colors.PowerNorm(gamma=0.3,vmax=5000))
+    fig.savefig("waveform_hist.png")
+    fig.savefig("waveform_hist.pdf")
+
     fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=True)
-    #ax.plot(fft.fftshift(fft_freqs),fft.fftshift(abs(waveform_fft_amp_mean)))
-    #ax.plot(fft.fftshift(fft_freqs),fft.fftshift(abs(waveform_fft_amp_mean*window_fft)))
-    ax.plot(fft_freqs,abs(waveform_fft_amp_mean))
-    ax.plot(fft_freqs,abs(waveform_fft_amp_mean*window_fft))
+    ax.plot(fft_freqs,abs(waveform_fft_amp_mean),label="Unfiltered")
+    ax.plot(fft_freqs,abs(waveform_fft_amp_mean*window_fft),label="Filtered")
     ax.set_xlabel(f"Frequency [{ts_units}$^{{-1}}$]")
     ax.set_ylabel(f"Waveform Amplitude [{waveform_units}]")
     ax.set_title(f"Average Spectrum Over {nWaveforms} Waveforms")
     ax.set_xscale("log")
     ax.set_yscale("log")
     ax.set_ylim(1e-2,1e3)
+    ax.legend()
 
     fig.savefig("waveform_fft.png")
     fig.savefig("waveform_fft.pdf")
-
