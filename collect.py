@@ -149,7 +149,6 @@ def collect_waveforms(ip,out_file_name,nwaveforms,source="channel1"):
             data_endp1 = data_start+size
             if size != waveform_length:
                 raise Exception(f"Data payload size {size} != {waveform_length} waveform_length")
-
             data_raw = np.frombuffer(data_raw[data_start:data_endp1],dtype=np.uint8)
             data = (data_raw*1.-yreference-yorigin)*yincrement
             waveforms[i,:] = data
@@ -190,13 +189,21 @@ def max_resolution_counts(ip):
     with h5py.File(out_file_name,"w") as out_file:
         collect_counter_data(ip,out_file,trigger_values,time_per_trig_val)
 
+def pulser_waveform_run(ip):
+    channel="channel1"
+    nWaveforms=10000
+    now = datetime.datetime.now().replace(microsecond=0)
+    setup_vert(ip,200e-3,-400e-3,probe=1,bwlimit="20M",channel=channel)
+    setup_horiz(ip,50e-9,0)
+    setup_trig(ip,200e-3,10e-6,sweep="single",channel=channel)
+
+    print(f"Collecting {nWaveforms}")
+    out_file_name = "waveforms_{}_{:d}waveforms.hdf5".format(now.isoformat(),nWaveforms)
+    print(f"Output filename is: {out_file_name}")
+    collect_waveforms(ip,out_file_name,nWaveforms,source=channel)
+
 if __name__ == "__main__":
     ip = "192.168.55.2"
     #normal_counts(ip)
     #max_resolution_counts(ip)
-
-    setup_vert(ip,200e-3,-400e-3,probe=1,bwlimit="20M")
-    setup_horiz(ip,50e-9,0)
-    setup_trig(ip,200e-3,10e-6,sweep="single")
-
-    collect_waveforms(ip,"waveforms.hdf5",10,source="channel1")
+    pulser_waveform_run(ip)
