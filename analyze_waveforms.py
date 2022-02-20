@@ -9,10 +9,9 @@ from scipy import signal
 import matplotlib.pyplot as mpl
 import h5py
 
-freq_cutoff = 200e6 # 50 Mhz
+freq_cutoff = 200e6 # Hz
 
 in_file_name = "waveforms_2022-02-19T16:32:50_10000waveforms.hdf5"
-in_file_name = "waveforms_2022-02-19T16:17:44_100wavforms.hdf5"
 with h5py.File(in_file_name) as in_file:
     waveforms = in_file["waveforms"]
     nWaveforms, waveform_len = waveforms.shape
@@ -36,9 +35,18 @@ with h5py.File(in_file_name) as in_file:
 
     waveform_filtered_ffts = waveform_ffts*window_fft
     waveforms_filtered = fft.irfft(waveform_filtered_ffts,waveform_len)
+    amax_filtered = np.amax(waveforms_filtered,axis=1)
+    #argmax_filtered = np.argmax(waveforms_filtered,axis=1)
 
     fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=True)
-    for i in range(nWaveforms):
+    ax.hist(amax_filtered*1e3,bins=110,range=(250,800))
+    ax.set_xlabel(f"Peak Maximum [m{waveform_units}]")
+    ax.set_ylabel(f"Counts/bin")
+    fig.savefig("max_hist.png")
+    fig.savefig("max_hist.pdf")
+
+    fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=True)
+    for i in range(min(nWaveforms,100)):
         #ax.plot(ts[:]*1e9,waveforms[i,:]*1e3,label="Unfiltered")
         ax.plot(ts[:]*1e9,waveforms_filtered[i,:]*1e3,label="filtered")
     ax.set_xlabel(f"Time [n{ts_units}]")
@@ -61,3 +69,4 @@ with h5py.File(in_file_name) as in_file:
 
     fig.savefig("waveform_fft.png")
     fig.savefig("waveform_fft.pdf")
+
