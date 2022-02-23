@@ -11,6 +11,8 @@ numpy = "*"
 matplotlib = "*"
 h5py = "*"
 scipy = "*"
+hist = {extras = ["plot"], version = "*"}
+zfit = "*"
 
 [dev-packages]
 

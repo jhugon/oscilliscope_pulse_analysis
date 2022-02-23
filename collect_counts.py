@@ -1,67 +1,12 @@
 #!/usr/bin/env python3
 
+from oscilloscope import *
 import time
 import numpy as np
 import datetime
 import h5py
 
 import vxi11
-
-MODEL = "MSO5354"
-
-def setup_vert(ip,scale,offset,probe=10,coupling="dc",bwlimit="off"):
-    """
-    scale and offset are floats in volts
-    probe is the int multiplier for the probe, so 10 for a 10x probe
-    coupling is dc or ac
-    bwlimit is off, 20M, 100M, or 200M
-    """
-    instr =  vxi11.Instrument(ip)
-    idn = instr.ask("*IDN?")
-    if not (MODEL in idn):
-        raise Exception(f"Instrument at {ip} not a {MODEL}, it's a: {idn}")
-    instr.write(":channel1:display on")
-    instr.write(f":channel1:scale {scale:g}") # 200 mV
-    instr.write(f":channel1:offset {offset:g}")
-    instr.write(f":channel1:probe {probe:d}")
-    instr.write(f":channel1:coupling {coupling}")
-    instr.write(f":channel1:bwlimit {bwlimit}") # off 20M 100M 200M
-
-
-def setup_horiz(ip,scale,offset):
-    """
-    scale and offset are floats in seconds
-    """
-    instr =  vxi11.Instrument(ip)
-    idn = instr.ask("*IDN?")
-    if not (MODEL in idn):
-        raise Exception(f"Instrument at {ip} not a {MODEL}, it's a: {idn}")
-    instr.write(":timebase:delay:enable off")
-    instr.write(f":timebase:scale {scale:g}")
-    instr.write(f":timebase:offset {offset:g}")
-    instr.write(":timebase:mode main")
-    instr.write(":timebase:href:mode center")
-    instr.write(":timebase:href:position 0")
-
-def setup_trig(ip,level,holdoff):
-    """
-    assumes edge mode for now
-
-    level: float trigger level in volts
-    holdoff: amount of time to holdoff from triggering
-    """
-    instr =  vxi11.Instrument(ip)
-    idn = instr.ask("*IDN?")
-    if not (MODEL in idn):
-        raise Exception(f"Instrument at ")
-    instr.write(":trigger:sweep normal") # auto normal single
-    instr.write(":trigger:coupling dc")
-    instr.write(f":trigger:holdoff {holdoff}")
-    instr.write(":trigger:nreject off") # noise rejection
-    instr.write(":trigger:mode edge")
-    instr.write(":trigger:edge:source channel1")
-    instr.write(":trigger:edge:slope positive")
-    instr.write(f":trigger:edge:level {level:g}")
 
 def collect_counter_data(ip,out_file,trigger_values,time_per_trig_val):
     """
@@ -131,6 +76,19 @@ def max_resolution_counts(ip):
     print(f"Output filename is: {out_file_name}")
     with h5py.File(out_file_name,"w") as out_file:
         collect_counter_data(ip,out_file,trigger_values,time_per_trig_val)
+
+def pulser_waveform_run(ip):
+    channel="channel1"
+    nWaveforms=10000
+    now = datetime.datetime.now().replace(microsecond=0)
+    setup_vert(ip,200e-3,-400e-3,probe=1,bwlimit="20M",channel=channel)
+    setup_horiz(ip,50e-9,0)
+    setup_trig(ip,200e-3,10e-6,sweep="single",channel=channel)
+
+    print(f"Collecting {nWaveforms}")
+    out_file_name = "waveforms_{}_{:d}waveforms.hdf5".format(now.isoformat(),nWaveforms)
+    print(f"Output filename is: {out_file_name}")
+    collect_waveforms(ip,out_file_name,nWaveforms,source=channel)
 
 if __name__ == "__main__":
     ip = "192.168.55.2"
