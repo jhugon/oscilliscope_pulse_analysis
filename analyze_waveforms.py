@@ -15,22 +15,58 @@ import matplotlib.colors
 import zfit
 
 
-def fit_gaussian(data_np,limits):
-    obs = zfit.Space("peak_max",limits=limits)
-    mu = zfit.Parameter("mu", 0.5*(limits[1]+limits[0]),limits[0],limits[1])
-    sigma = zfit.Parameter("sigma", 50,10,100)
-    gauss = zfit.pdf.Gauss(obs=obs, mu=mu, sigma=sigma)
+def fit_gaussians(data_np,limits_list):
+    nLimits = len(limits_list)
+    obs = zfit.Space("peak_max",limits=(limits_list[0][0],limits_list[-1][-1]))
+    mus = []
+    yields = []
+    sigmas = []
+    base_pdfs = []
+    ext_pdfs = []
+    for i, limits in enumerate(limits_list):
+        mu = zfit.Parameter(f"mu_{i}", 0.5*(limits[1]+limits[0]),limits[0],limits[1])
+        sigma = zfit.Parameter(f"sigma_{i}", 50,10,100)
+        yield_gauss = zfit.Parameter(f"yield_{i}",1e2,0,1e3)
+        gauss = zfit.pdf.Gauss(obs=obs, mu=mu, sigma=sigma)
+        mus.append(mu)
+        sigmas.append(sigma)
+        yields.append(yield_gauss)
+        base_pdfs.append(gauss)
+        ext_pdfs.append(gauss.create_extended(yield_gauss))
+    sum_pdf = zfit.pdf.SumPDF(pdfs=ext_pdfs)
 
     data = zfit.Data.from_numpy(obs=obs,array=data_np)
-    nll = zfit.loss.UnbinnedNLL(model=gauss,data=data)
+    nll = zfit.loss.ExtendedUnbinnedNLL(model=sum_pdf,data=data)
 
     minimizer = zfit.minimize.Minuit()
     result = minimizer.minimize(nll)
     param_uncert = result.hesse()
-    return gauss
+    print(result)
+#    for i in range(nLimits):
+#        limits = (mus[i].value()-2*sigmas[i].value(),mus[i].value()+2*sigmas[i].value())
+#        for j in range(nLimits):
+#            if i == j:
+#                mus[j].floating = True
+#                sigmas[j].floating = True
+#                yields[j].floating = True
+#            else:
+#                mus[j].floating = False
+#                sigmas[j].floating = False
+#                yields[j].floating = False
+#        nll_i = nll.create_new(fit_range=obs.with_limits(limits))
+#        result_i = minimizer.minimize(nll_i)
+#        param_uncert_i = result_i.hesse()
+#        print(result_i)
+#        
+#    for j in range(nLimits):
+#        mus[j].floating = True
+#        sigmas[j].floating = True
+#        yields[j].floating = True
+
+    return sum_pdf
 
 def plot_pdf_over_hist(ax,pdf,hist,limits):
-    x = np.linspace(limits[0],limits[1])
+    x = np.linspace(limits[0],limits[1],1000)
     y = zfit.run(pdf.pdf(x))
     limited_hist = hist[bh.loc(limits[0]):bh.loc(limits[1])]
     y *= limited_hist[0:len:sum]
@@ -93,11 +129,11 @@ with h5py.File(in_file_name) as in_file:
 
     amax_filtered_hist = Hist.new.Reg(110,250,800,name="peak_max",label=f"Peak Maximum [m{waveform_units}]").Double()
     amax_filtered_hist.fill(amax_filtered*1e3)
-    fit_pdf = fit_gaussian(amax_filtered*1e3,[250,350])
+    fit_pdf = fit_gaussians(amax_filtered*1e3,[(250,350),(350,450),(450,525),(550,625)])
 
     fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=True)
     amax_filtered_hist.plot(ax=ax,label="Data")
-    plot_pdf_over_hist(ax,fit_pdf,amax_filtered_hist,(250,350))
+    plot_pdf_over_hist(ax,fit_pdf,amax_filtered_hist,(250,625))
     ax.set_title("Filtered Waveforms")
     ax.set_ylabel(f"Waveforms / {amax_filtered_hist.axes[0].widths[0]:.0f} mV")
     fig.savefig("max_hist.png")
