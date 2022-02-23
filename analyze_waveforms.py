@@ -32,7 +32,7 @@ def fit_e_height(data_np,nPeaks,limits):
         delta_mu = zfit.Parameter(f"delta_m_{i}", 0, -20,20)
         mu = zfit.ComposedParameter(f"m_{i}", lambda eh, dm,pn: (pn)*eh+dm,params=[e_height,delta_mu,peak_num])
         sigma = zfit.Parameter(f"sig_{i}", 16.,10,25)
-        yield_gauss = zfit.Parameter(f"yld_{i}",300,200,400)
+        yield_gauss = zfit.Parameter(f"yld_{i}",300,100,500)
         gauss = zfit.pdf.Gauss(obs=obs, mu=mu, sigma=sigma)
         delta_mus.append(delta_mu)
         mus.append(mu)
@@ -99,7 +99,7 @@ with h5py.File(in_file_name) as in_file:
     waveforms_dset = in_file["waveforms"]
     waveform_units = waveforms_dset.attrs["units"]
     ts = waveforms_dset.dims[1][0]
-    waveforms = waveforms_dset[:,:][np.amax(waveforms_dset,axis=1)!=0,:]
+    waveforms = waveforms_dset[:,:][np.logical_and(np.amax(waveforms_dset,axis=1)!=0,np.std(waveforms_dset,axis=1)>1e-6),:]
     nWaveforms, waveform_len = waveforms.shape
     ts_broadcast, _ = np.broadcast_arrays(ts,waveforms)
     ts_units = ts.attrs["units"]
@@ -123,8 +123,6 @@ with h5py.File(in_file_name) as in_file:
 
     waveform_filtered_ffts = waveform_ffts*window_fft
     waveforms_filtered = fft.irfft(waveform_filtered_ffts,waveform_len)
-    waveform_filtered_hist = Hist.new.Reg(100,-200,200,name="time",label="Time [ns]").Reg(100,-200,900,name="waveform",label="Waveform [mV]").Double()
-    waveform_filtered_hist.fill(ts_broadcast[:,:].flatten()*1e9,waveforms_filtered[:,:].flatten()*1e3)
     amax_filtered = np.amax(waveforms_filtered,axis=1)
     argmax_filtered = np.argmax(waveforms_filtered,axis=1)
     argmax_filtered_ts = np.array([ts[x] for x in argmax_filtered])
@@ -132,21 +130,35 @@ with h5py.File(in_file_name) as in_file:
     print(f"filtered pulse peak goes from {min(amax_filtered)*1e3:.1f} to {max(amax_filtered)*1e3:.1f} mV, quartiles: {np.quantile(amax_filtered,0.25)*1e3:.1f}, {np.quantile(amax_filtered,0.5)*1e3:.1f}, {np.quantile(amax_filtered,0.75)*1e3:.1f} mV")
     print(f"filtered pulse peak location goes from index {ts[int(min(argmax_filtered))]*1e9:.1f} to {ts[int(max(argmax_filtered))]*1e9:.1f} ns, quartiles: {ts[int(np.quantile(argmax_filtered,0.25))]*1e9:.1f}, {ts[int(np.quantile(argmax_filtered,0.5))]*1e9:.1f}, {ts[int(np.quantile(argmax_filtered,0.75))]*1e9:.1f} ns")
 
+    waveforms_filtered_npeaks = np.zeros(nWaveforms,dtype=np.uint32)
+    for iWaveform in range(nWaveforms):
+        peak_loc_list, _ = signal.find_peaks(waveforms_filtered[iWaveform,:],height=0.05)
+        waveforms_filtered_npeaks[iWaveform] = len(peak_loc_list)
+    select_one_peak = waveforms_filtered_npeaks == 1
+
     waveforms_filtered_shifted = waveforms_filtered[:,:]
     for iWaveform in range(nWaveforms):
         waveforms_filtered_shifted[iWaveform,:] = np.roll(waveforms_filtered_shifted[iWaveform,:],waveform_len//2-argmax_filtered[iWaveform])
     waveforms_filtered_shifted_normalized = (waveforms_filtered_shifted.T/amax_filtered).T
+    waveforms_normalized = (waveforms.T/amax_filtered).T
 
+    hist_selection = np.logical_and(select_one_peak,select_peak_location)
+    print(f"One peak waveforms: {select_one_peak.sum()} nice peak location: {select_peak_location.sum()}, logical and: {hist_selection.sum()}")
+    waveform_hist = Hist.new.Reg(100,-200,200,name="time",label="Time [ns]").Reg(100,-200,1100,name="waveform",label="Waveform [mV]").Double()
+    waveform_hist.fill(ts_broadcast[hist_selection,:].flatten()*1e9,waveforms[hist_selection,:].flatten()*1e3)
+    waveform_normalized_hist = Hist.new.Reg(100,-50,100,name="time",label="Time [ns]").Reg(100,-0.2,1.2,name="waveform",label="Waveform [arbitrary]").Double()
+    waveform_normalized_hist.fill(ts_broadcast[hist_selection,:].flatten()*1e9,waveforms_normalized[hist_selection,:].flatten())
+    waveform_filtered_hist = Hist.new.Reg(100,-200,200,name="time",label="Time [ns]").Reg(100,-200,900,name="waveform",label="Waveform [mV]").Double()
+    waveform_filtered_hist.fill(ts_broadcast[hist_selection,:].flatten()*1e9,waveforms_filtered[hist_selection,:].flatten()*1e3)
     waveform_filtered_shifted_hist = Hist.new.Reg(100,-40,40,name="time",label="Time [ns]").Reg(100,200,800,name="waveform",label="Waveform [mV]").Double()
-    waveform_filtered_shifted_hist.fill(ts_broadcast[select_peak_location,:].flatten()*1e9,waveforms_filtered_shifted[select_peak_location,:].flatten()*1e3)
-
+    waveform_filtered_shifted_hist.fill(ts_broadcast[hist_selection,:].flatten()*1e9,waveforms_filtered_shifted[hist_selection,:].flatten()*1e3)
     waveform_filtered_shifted_normalized_hist = Hist.new.Reg(100,-50,100,name="time",label="Time [ns]").Reg(100,-0.2,1.2,name="waveform",label="Waveform [arbitrary]").Double()
-    waveform_filtered_shifted_normalized_hist.fill(ts_broadcast[select_peak_location,:].flatten()*1e9,waveforms_filtered_shifted_normalized[select_peak_location,:].flatten())
+    waveform_filtered_shifted_normalized_hist.fill(ts_broadcast[hist_selection,:].flatten()*1e9,waveforms_filtered_shifted_normalized[hist_selection,:].flatten())
 
     amax_filtered_hist = Hist.new.Reg(110,250,800,name="peak_max",label=f"Peak Maximum [m{waveform_units}]").Double()
-    amax_filtered_hist.fill(amax_filtered*1e3)
+    amax_filtered_hist.fill(amax_filtered[hist_selection]*1e3)
     #fit_gaus_pdf = fit_gaussians(amax_filtered*1e3,[(250,350),(350,450),(450,525),(550,615)])
-    fit_e_height_pdf = fit_e_height(amax_filtered*1e3,4,limits=(250,615))
+    fit_e_height_pdf = fit_e_height(amax_filtered[hist_selection]*1e3,4,limits=(250,615))
 
     fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=True)
     amax_filtered_hist.plot(ax=ax,label="Data")
@@ -159,9 +171,10 @@ with h5py.File(in_file_name) as in_file:
     fig.savefig("max_hist.pdf")
 
     fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=True)
-    for i in range(min(nWaveforms,100)):
-        #ax.plot(ts[:]*1e9,waveforms[i,:]*1e3,label="Unfiltered")
-        ax.plot(ts[:]*1e9,waveforms_filtered[i,:]*1e3,label="filtered")
+    for i in range(min(nWaveforms,10)):
+        #if waveforms_filtered_npeaks[i] == 1:
+        #ax.plot(ts[:]*1e9,waveforms[i,:]*1e3,c='k',label="Unfiltered")
+        ax.plot(ts[:]*1e9,waveforms_filtered[i,:]*1e3,c='g',label="filtered")
     ax.set_xlabel(f"Time [n{ts_units}]")
     ax.set_ylabel(f"Waveform [m{waveform_units}]")
     #ax.legend()
@@ -194,10 +207,22 @@ with h5py.File(in_file_name) as in_file:
     fig.savefig("peak_maxVargmax.pdf")
 
     fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=False)
-    waveform_filtered_hist.plot2d(ax=ax,norm=matplotlib.colors.PowerNorm(gamma=0.3,vmax=5000))
-    ax.set_title("Filtered Waveforms")
+    waveform_hist.plot2d(ax=ax,norm=matplotlib.colors.PowerNorm(gamma=0.3))
+    ax.set_title("Unfiltered Waveforms")
     fig.savefig("waveform_hist.png")
     fig.savefig("waveform_hist.pdf")
+
+    fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=False)
+    waveform_normalized_hist.plot2d(ax=ax,norm=matplotlib.colors.PowerNorm(gamma=0.3))#,vmax=5000))
+    ax.set_title("Unfiltered, Normalized (using filtered) Waveforms")
+    fig.savefig("waveform_normalized_hist.png")
+    fig.savefig("waveform_normalized_hist.pdf")
+
+    fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=False)
+    waveform_filtered_hist.plot2d(ax=ax,norm=matplotlib.colors.PowerNorm(gamma=0.3,vmax=5000))
+    ax.set_title("Filtered Waveforms")
+    fig.savefig("waveform_filtered_hist.png")
+    fig.savefig("waveform_filtered_hist.pdf")
 
     fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=False)
     waveform_filtered_shifted_hist.plot2d(ax=ax,norm=matplotlib.colors.PowerNorm(gamma=0.3))#,vmax=5000))
@@ -208,5 +233,5 @@ with h5py.File(in_file_name) as in_file:
     fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=False)
     waveform_filtered_shifted_normalized_hist.plot2d(ax=ax,norm=matplotlib.colors.PowerNorm(gamma=0.3))#,vmax=5000))
     ax.set_title("Filtered, Peak-shifted, Normalized Waveforms")
-    fig.savefig("waveform_filtred_shifted_hist.png")
-    fig.savefig("waveform_filtred_shifted_hist.pdf")
+    fig.savefig("waveform_filtred_shifted_normalized_hist.png")
+    fig.savefig("waveform_filtred_shifted_normalized_hist.pdf")
