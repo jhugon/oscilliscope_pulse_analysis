@@ -137,12 +137,10 @@ with h5py.File(in_file_name) as in_file:
         waveforms_filtered_shifted[iWaveform,:] = np.roll(waveforms_filtered_shifted[iWaveform,:],waveform_len//2-argmax_filtered[iWaveform])
     waveforms_filtered_shifted_normalized = (waveforms_filtered_shifted.T/amax_filtered).T
 
-    #waveform_filtered_shifted_hist = Hist.new.Reg(100,-200,200,name="time",label="Time [ns]").Reg(100,-200,900,name="waveform",label="Waveform [mV]").Double()
     waveform_filtered_shifted_hist = Hist.new.Reg(100,-40,40,name="time",label="Time [ns]").Reg(100,200,800,name="waveform",label="Waveform [mV]").Double()
     waveform_filtered_shifted_hist.fill(ts_broadcast[select_peak_location,:].flatten()*1e9,waveforms_filtered_shifted[select_peak_location,:].flatten()*1e3)
 
     waveform_filtered_shifted_normalized_hist = Hist.new.Reg(100,-50,100,name="time",label="Time [ns]").Reg(100,-0.2,1.2,name="waveform",label="Waveform [arbitrary]").Double()
-    #waveform_filtered_shifted_normalized_hist = Hist.new.Reg(100,-40,40,name="time",label="Time [ns]").Reg(100,200,800,name="waveform",label="Waveform [mV]").Double()
     waveform_filtered_shifted_normalized_hist.fill(ts_broadcast[select_peak_location,:].flatten()*1e9,waveforms_filtered_shifted_normalized[select_peak_location,:].flatten())
 
     amax_filtered_hist = Hist.new.Reg(110,250,800,name="peak_max",label=f"Peak Maximum [m{waveform_units}]").Double()
