@@ -10,7 +10,33 @@ from scipy import signal
 import matplotlib.pyplot as mpl
 import h5py
 from hist import Hist
+import boost_histogram as bh
 import matplotlib.colors
+import zfit
+
+
+def fit_gaussian(data_np,limits):
+    obs = zfit.Space("peak_max",limits=limits)
+    mu = zfit.Parameter("mu", 0.5*(limits[1]+limits[0]),limits[0],limits[1])
+    sigma = zfit.Parameter("sigma", 50,10,100)
+    gauss = zfit.pdf.Gauss(obs=obs, mu=mu, sigma=sigma)
+
+    data = zfit.Data.from_numpy(obs=obs,array=data_np)
+    nll = zfit.loss.UnbinnedNLL(model=gauss,data=data)
+
+    minimizer = zfit.minimize.Minuit()
+    result = minimizer.minimize(nll)
+    param_uncert = result.hesse()
+    return gauss
+
+def plot_pdf_over_hist(ax,pdf,hist,limits):
+    x = np.linspace(limits[0],limits[1])
+    y = zfit.run(pdf.pdf(x))
+    limited_hist = hist[bh.loc(limits[0]):bh.loc(limits[1])]
+    y *= limited_hist[0:len:sum]
+    bin_width = limited_hist.axes[0].widths[0]
+    y *= bin_width
+    ax.plot(x,y,label="Fit")
 
 freq_cutoff = 200e6 # Hz
 
@@ -65,11 +91,15 @@ with h5py.File(in_file_name) as in_file:
     #waveform_filtered_shifted_normalized_hist = Hist.new.Reg(100,-40,40,name="time",label="Time [ns]").Reg(100,200,800,name="waveform",label="Waveform [mV]").Double()
     waveform_filtered_shifted_normalized_hist.fill(ts_broadcast[select_peak_location,:].flatten()*1e9,waveforms_filtered_shifted_normalized[select_peak_location,:].flatten())
 
+    amax_filtered_hist = Hist.new.Reg(110,250,800,name="peak_max",label=f"Peak Maximum [m{waveform_units}]").Double()
+    amax_filtered_hist.fill(amax_filtered*1e3)
+    fit_pdf = fit_gaussian(amax_filtered*1e3,[250,350])
+
     fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=True)
-    ax.hist(amax_filtered*1e3,bins=110,range=(250,800))
-    ax.set_xlabel(f"Peak Maximum [m{waveform_units}]")
-    ax.set_ylabel(f"Counts/bin")
+    amax_filtered_hist.plot(ax=ax,label="Data")
+    plot_pdf_over_hist(ax,fit_pdf,amax_filtered_hist,(250,350))
     ax.set_title("Filtered Waveforms")
+    ax.set_ylabel(f"Waveforms / {amax_filtered_hist.axes[0].widths[0]:.0f} mV")
     fig.savefig("max_hist.png")
     fig.savefig("max_hist.pdf")
 
@@ -125,4 +155,3 @@ with h5py.File(in_file_name) as in_file:
     ax.set_title("Filtered, Peak-shifted, Normalized Waveforms")
     fig.savefig("waveform_filtred_shifted_hist.png")
     fig.savefig("waveform_filtred_shifted_hist.pdf")
-
