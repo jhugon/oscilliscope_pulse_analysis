@@ -1,8 +1,27 @@
 #!/usr/bin/env python3
 
 import vxi11
+import numpy as np
+import h5py
+import time
+import datetime
 
 MODEL = "MSO5354"
+
+def find_smallest_setting(x):
+    """
+    Finds the smallest value in the 1-2-5 series that is larger than the given value
+
+    Works with scalars or numpy arrays
+    """
+    exp = np.floor(np.log10(x))
+    significand = x/10**exp
+    s_lt2 = significand <= 2.
+    s_lt5 = significand <= 5.
+    s_gt5 = significand > 5.
+    result_significand = 2.*s_lt2 + 5.*np.logical_xor(s_lt5,s_lt2) + 10.*s_gt5
+    return result_significand*10**exp
+
 
 def setup_vert(ip,scale,offset,probe=10,coupling="dc",bwlimit="off",channel="channel1"):
     """
@@ -135,6 +154,6 @@ def setup_sig_gen(ip,source,function,Vpp,offset,frequency,phase=0.,symmetry=50.,
     instr.write(f":source{source}:type none") # none, mod, sweep, burst
     if out50Ohm:
         instr.write(f":source{source}:output:impedance fifty") # 50 Ohm
-    else
+    else:
         instr.write(f":source{source}:output:impedance omeg") # High Z
     instr.write(f":source{source}:output:state on")
