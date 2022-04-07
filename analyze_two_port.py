@@ -44,7 +44,6 @@ def collect_step_response_data(ip,verts_in,verts_sig_gen,nWaveforms,in_channel="
 
     return out_file_name
 
-
 def collect_positive_step_response_data(ip,amplitudes_sig_gen,nWaveforms,in_channel="channel1",sig_gen_channel="1",horiz=(500e-9,0)):
     verts_sig_gen = [(x,0.5*x) for x in amplitudes_sig_gen]
     scale_in = find_smallest_setting(np.array(amplitudes_sig_gen)*1.1/4.)
@@ -175,7 +174,46 @@ def analyze_step_response_data(fn):
         fig.savefig("step_response_rise_time.png")
  
 
+def collect_noise_data(ip,nWaveforms,in_channel="channel1"):
+    """
+    Collects noise data assuming input port is appropriately terminated.
+    """
+    now = datetime.datetime.now().replace(microsecond=0)
+
+    print(f"Collecting {nWaveforms}")
+    out_file_name = "noise_{}_{:d}waveforms.hdf5".format(now.isoformat(),nWaveforms)
+    print(f"Output filename is: {out_file_name}")
+
+    setup_horiz(ip,20e-6,0)
+    setup_vert(ip,1e-3,0,probe=1,channel=in_channel)
+    setup_trig(ip,0.,10e-6,sweep="single",channel=in_channel)
+    time.sleep(0.5)
+
+    with h5py.File(out_file_name,"w") as out_file:
+        noise_grp = out_file.create_group("noise")
+        collect_waveforms(ip,noise_grp,nWaveforms,channel=in_channel)
+
+    return out_file_name
+
+
+def analyze_noise_data(fn):
+    with h5py.File(fn) as f:
+        noise_dir = f["noise"]
+        waveform_dset = noise_dir["waveforms_raw"]
+        waveform_ffts, fft_freqs = fft_waveforms(waveform_dset)
+        mean_fft_amp = np.sum(abs(waveform_ffts),axis=0)/waveform_ffts.shape[0]
+        fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=True)
+        ax.loglog(fft_freqs,mean_fft_amp)
+        ax.set_xlabel("Frequency [Hz]")
+        ax.set_ylabel("Noise Amplitude [V]")
+        ax.set_title("Noise Amplitude Spectrum")
+        fig.savefig("Noise_spectrum.png")
+        
+
 if __name__ == "__main__":
     ip = "192.168.55.2"
-    fn = collect_positive_step_response_data(ip,[0.01,0.03,0.05,0.1,0.3,0.5],20)
-    analyze_step_response_data(fn)
+    #fn = collect_positive_step_response_data(ip,[0.01,0.03,0.05,0.1,0.3,0.5],20)
+    #analyze_step_response_data(fn)
+    fn = collect_noise_data(ip,50)
+    fn = "noise_2022-04-07T14:05:48_20waveforms.hdf5"
+    analyze_noise_data(fn)

@@ -21,6 +21,14 @@ def calibrate_waveforms(waveforms_dset):
     intercept = waveforms_dset.attrs["calib_intercept"]
     return waveforms_dset[:,:]*slope+intercept
 
+def fft_waveforms(waveforms_dset):
+    ts = waveforms_dset.dims[1][0]
+    sample_period = ts[1]-ts[0]
+    waveforms = calibrate_waveforms(waveforms_dset)
+    waveform_ffts = fft.rfft(waveforms)
+    fft_freqs = fft.rfftfreq(waveforms.shape[-1],d=sample_period)
+    return waveform_ffts, fft_freqs
+
 def decode_time_units(s):
     """
     Decodes units string like "s", "us", "ns" etc.
