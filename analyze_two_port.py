@@ -63,26 +63,20 @@ def analyze_step_response_data(fn):
     with h5py.File(fn) as f:
         sr_dir = f["step_response"]
         sig_gen_Vpp_values = []
+        waveform_hists = []
         for sgs_key in sr_dir:
             sgs_dir = sr_dir[sgs_key]
             sig_gen_Vpp = sgs_dir.attrs["amplitude"]
             sig_gen_Vpp_values.append(sig_gen_Vpp)
-        waveform_hist = Hist.new.Variable(sig_gen_Vpp_values+[sig_gen_Vpp_values[-1]*2],name="sig_gen_Vpp",label="Signal Generator $V_{pp}$ [V]").Reg(500,-0.6,0.6,name="waveform",label="Waveform [V]").Double()
-        for sgs_key in sr_dir:
-            sgs_dir = sr_dir[sgs_key]
-            sig_gen_Vpp = sgs_dir.attrs["amplitude"]
-            waveforms_dset = sgs_dir["waveforms"]
-            ts = waveforms_dset.dims[1][0]
-            waveform_hist.fill(sig_gen_Vpp,waveforms_dset[:,:].flatten())
-
-            fig, ax = plot_hist_waveformVtime(waveforms_dset,1000,50,-50e-9,100e-9)
-            fig.savefig(f"step_response_{sgs_key}.png")
+            waveform_hist = make_hist_waveformVtime(sgs_dir["waveforms_raw"],time_units="ns",voltage_units="mV")
+            waveform_hists.append(waveform_hist)
         fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=False)
         for iBin in range(len(sig_gen_Vpp_values)):
-            waveform_hist[iBin,:].plot(ax=ax,label=f"Amplitude: {sig_gen_Vpp_values[iBin]} V")
+            waveform_hists[iBin].project("voltage").plot(ax=ax,label=f"Amplitude: {sig_gen_Vpp_values[iBin]} V")
         ax.legend(loc="best")
         ax.set_yscale("log")
-        ax.set_xlim(-0.1,0.1)
+        #ax.set_xlim(-0.1,0.1)
+        ax.set_ylim(10,None)
         ax.set_title("Recorded Waveform Values")
         fig.savefig("step_response_waveform_hist.png")
         fig.savefig("step_response_waveform_hist.pdf")
@@ -91,5 +85,5 @@ def analyze_step_response_data(fn):
 if __name__ == "__main__":
     ip = "192.168.55.2"
     #out_fn = collect_positive_step_response_data(ip,[0.01,0.03,0.05,0.1,0.3,0.5],20)
-    fn = "step_response_2022-04-06T16:07:16_20waveforms.hdf5"
+    fn = "step_response_2022-04-07T10:08:46_20waveforms.hdf5"
     analyze_step_response_data(fn)
