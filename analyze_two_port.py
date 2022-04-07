@@ -44,22 +44,22 @@ def collect_step_response_data(ip,verts_in,verts_sig_gen,nWaveforms,in_channel="
 
     return out_file_name
 
-def collect_positive_step_response_data(ip,amplitudes_sig_gen,nWaveforms,in_channel="channel1",sig_gen_channel="1",horiz=(500e-9,0)):
+def collect_positive_step_response_data(ip,amplitudes_sig_gen,nWaveforms,gain=10.,in_channel="channel1",sig_gen_channel="1",horiz=(500e-9,0)):
     verts_sig_gen = [(x,0.5*x) for x in amplitudes_sig_gen]
     scale_in = find_smallest_setting(np.array(amplitudes_sig_gen)*1.1/4.)
-    verts_in = [(x,-0.5*y) for x,y in zip(scale_in,amplitudes_sig_gen)]
-    trigger_thresholds = [0.5*x for x in amplitudes_sig_gen]
+    verts_in = [(x*gain,-0.5*y*gain) for x,y in zip(scale_in,amplitudes_sig_gen)]
+    trigger_thresholds = [0.5*x*gain for x in amplitudes_sig_gen]
     return collect_step_response_data(ip,verts_in,verts_sig_gen,nWaveforms,in_channel=in_channel,sig_gen_channel=sig_gen_channel,horiz=horiz,trigger_thresholds=trigger_thresholds)
 
 
-def collect_bipolar_step_response_data(ip,amplitudes_sig_gen,nWaveforms,in_channel="channel1",sig_gen_channel="1",horiz=(500e-9,0)):
+def collect_bipolar_step_response_data(ip,amplitudes_sig_gen,nWaveforms,gain=10.,in_channel="channel1",sig_gen_channel="1",horiz=(500e-9,0)):
     verts_sig_gen = [(2*x,0.) for x in amplitudes_sig_gen]
     scale_in = find_smallest_setting(np.array(amplitudes_sig_gen)*1.1/4.)
-    verts_in = [(x,0.) for x in scale_in]
+    verts_in = [(x*gain,0.) for x in scale_in]
     return collect_step_response_data(ip,verts_in,verts_sig_gen,nWaveforms,in_channel=in_channel,sig_gen_channel=sig_gen_channel,horiz=horiz)
 
 def find_waveform_bottom_top(waveform_hist):
-        v_hist_array = waveform_hist.project("voltage").values()
+        v_hist_array = waveform_hist[0:len:sum,:].values() # gets rid of over/underflow
         v_hist_array_max = max(v_hist_array)
         peak_indices, peak_props = signal.find_peaks(v_hist_array,height=v_hist_array_max*0.2)
         peak_heights = peak_props["peak_heights"]
@@ -99,19 +99,29 @@ def find_step_times(profile,bottom,mid,top):
 def analyze_step_waveform_dset(waveform_dset,sig_gen_Vpp):
 
         caption = f"Sig-Gen Vpp = {sig_gen_Vpp}"
-        waveform_hist = make_hist_waveformVtime(waveform_dset,time_units="s",voltage_units="V",downsample_time_by=1)
-        bottom,top = find_waveform_bottom_top(waveform_hist)
-        Vpp = top-bottom
-        mid = (top+bottom)/2.
-
+        waveform_hist = make_hist_waveformVtime(waveform_dset,time_units="ns",voltage_units="mV",downsample_time_by=10)
+        waveform_hist = waveform_hist[-200j:1000j,:][0:len,0:len] # second slice gets rid of overflow
         waveform_profile = waveform_hist.profile("voltage")
-
+        bottom,top = find_waveform_bottom_top(waveform_hist)
         Vmax = max(waveform_profile.values())
         Vmin = min(waveform_profile.values())
-
-        overshoot = (Vmax-top)/Vpp
-        undershoot = (bottom-Vmin)/Vpp
-        tMid, t1pct, t10pct, t90pct, t99pct, tSettle1pct, tSettle0p1pct = find_step_times(waveform_profile,bottom,mid,top)
+        Vpp = float('nan')
+        mid = float('nan')
+        overshoot = float('nan')
+        undershoot = float('nan')
+        tMid, t1pct, t10pct, t90pct, t99pct, tSettle1pct, tSettle0p1pct = [float('nan')]*7
+        try:
+            overshoot = (Vmax-top)/Vpp
+            mid = (top+bottom)/2.
+            undershoot = (bottom-Vmin)/Vpp
+            Vpp = top-bottom
+        except TypeError:
+            Vpp = float('nan')
+            mid = float('nan')
+            overshoot = float('nan')
+            undershoot = float('nan')
+        else:
+            tMid, t1pct, t10pct, t90pct, t99pct, tSettle1pct, tSettle0p1pct = find_step_times(waveform_profile,bottom,mid,top)
 
         statistics = {
             "top": top,
@@ -135,15 +145,15 @@ def analyze_step_waveform_dset(waveform_dset,sig_gen_Vpp):
 
         fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=False)
         waveform_hist.plot2d(ax=ax,norm=PHOSPHOR_HIST_NORM)
-        ax.axvline(t10pct,c="0.5")
-        ax.axvline(t90pct,c="0.5")
-        ax.axvline(tSettle1pct,c="0")
-        ax.axvline(tSettle0p1pct,c="0")
-        ax.axhline(bottom,c="0.5")
-        ax.axhline(top,c="0.5")
+        #ax.axvline(t10pct,c="0.5")
+        #ax.axvline(t90pct,c="0.5")
+        #ax.axvline(tSettle1pct,c="0")
+        #ax.axvline(tSettle0p1pct,c="0")
+        #ax.axhline(bottom,c="0.5")
+        #ax.axhline(top,c="0.5")
         waveform_profile.plot(ax=ax,color="r")
-        ax.set_xlim(t1pct-1*(t99pct-t1pct),t99pct+5*(t99pct-t1pct))
-        ax.set_ylim(Vmin-0.1*Vpp,Vmax+0.1*Vpp)
+        #ax.set_xlim(t1pct-1*(t99pct-t1pct),t99pct+5*(t99pct-t1pct))
+        #ax.set_ylim(Vmin-0.1*Vpp,Vmax+0.1*Vpp)
         fig.suptitle(caption)
         fig.savefig(f"step_response_waveform_{sig_gen_Vpp}.png")
         return statistics
@@ -174,7 +184,7 @@ def analyze_step_response_data(fn):
         fig.savefig("step_response_rise_time.png")
  
 
-def collect_noise_data(ip,nWaveforms,in_channel="channel1"):
+def collect_noise_data(ip,nWaveforms,trigger_level=0,in_channel="channel1"):
     """
     Collects noise data assuming input port is appropriately terminated.
     """
@@ -184,9 +194,9 @@ def collect_noise_data(ip,nWaveforms,in_channel="channel1"):
     out_file_name = "noise_{}_{:d}waveforms.hdf5".format(now.isoformat(),nWaveforms)
     print(f"Output filename is: {out_file_name}")
 
-    setup_horiz(ip,20e-6,0)
+    setup_horiz(ip,1e-6,0)
     setup_vert(ip,1e-3,0,probe=1,channel=in_channel)
-    setup_trig(ip,0.,10e-6,sweep="single",channel=in_channel)
+    setup_trig(ip,trigger_level,10e-6,sweep="single",channel=in_channel)
     time.sleep(0.5)
 
     with h5py.File(out_file_name,"w") as out_file:
@@ -208,12 +218,16 @@ def analyze_noise_data(fn):
         ax.set_ylabel("Noise Amplitude [V]")
         ax.set_title("Noise Amplitude Spectrum")
         fig.savefig("Noise_spectrum.png")
-        
+        waveforms = calibrate_waveforms(waveform_dset)
+        dataset_std = np.std(waveforms)
+        print(f"Dataset Standard Deviation: {dataset_std*1e6:.1f} μV")
+
 
 if __name__ == "__main__":
     ip = "192.168.55.2"
-    #fn = collect_positive_step_response_data(ip,[0.01,0.03,0.05,0.1,0.3,0.5],20)
-    #analyze_step_response_data(fn)
-    fn = collect_noise_data(ip,50)
-    fn = "noise_2022-04-07T14:05:48_20waveforms.hdf5"
+    ##fn = collect_positive_step_response_data(ip,[0.01,0.03,0.05,0.1,0.3],100,gain=10.)
+    fn = "step_response_2022-04-07T15:16:35_100waveforms.hdf5"
+    analyze_step_response_data(fn)
+    #fn = collect_noise_data(ip,100,trigger_level=800e-6)
+    fn = "noise_2022-04-07T15:38:08_100waveforms.hdf5"
     analyze_noise_data(fn)
