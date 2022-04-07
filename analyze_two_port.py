@@ -76,6 +76,46 @@ def find_waveform_bottom_top(waveform_hist):
             return [None,None]
         return results
 
+def analyze_waveform_dset(waveform_dset,sig_gen_Vpp):
+        caption = f"Sig-Gen Vpp = {sig_gen_Vpp}"
+        waveform_hist = make_hist_waveformVtime(waveform_dset,time_units="ns",voltage_units="mV",downsample_time_by=10)
+        bottom,top = find_waveform_bottom_top(waveform_hist)
+        Vpp = top-bottom
+
+        waveform_profile = waveform_hist.profile("voltage")
+
+        Vmax = max(waveform_profile.values())
+        Vmin = min(waveform_profile.values())
+
+        overshoot = (Vmax-top)/Vpp
+        undershoot = (bottom-Vmin)/Vpp
+
+        statistics = {
+            "top": top,
+            "bottom": bottom,
+            "Vpp" : Vpp,
+            "max" : Vmax,
+            "min" : Vmin,
+            "overshoot": overshoot,
+            "undershoot": undershoot,
+        }
+        print(caption)
+        print(statistics)
+
+
+        fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=False)
+        waveform_hist.plot2d(ax=ax,norm=PHOSPHOR_HIST_NORM)
+        ax.axhline(bottom,c="0.5")
+        ax.axhline(top,c="0.5")
+        waveform_profile.plot(ax=ax,color="r")
+        ax.set_xlim(-20,40)
+        #ax.set_ylim(-5,15)
+        fig.suptitle(caption)
+        fig.savefig(f"step_response_waveform_{sig_gen_Vpp}.png")
+
+
+
+
 def analyze_step_response_data(fn):
 
     with h5py.File(fn) as f:
@@ -86,30 +126,7 @@ def analyze_step_response_data(fn):
             sgs_dir = sr_dir[sgs_key]
             sig_gen_Vpp = sgs_dir.attrs["amplitude"]
             sig_gen_Vpp_values.append(sig_gen_Vpp)
-            waveform_hist = make_hist_waveformVtime(sgs_dir["waveforms_raw"],time_units="ns",voltage_units="mV",downsample_time_by=10)
-            waveform_hists.append(waveform_hist)
-            bottom,top = find_waveform_bottom_top(waveform_hist)
-            print(sig_gen_Vpp,bottom,top)
-            
-        fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=False)
-        for iBin in range(len(sig_gen_Vpp_values)):
-            waveform_hists[iBin].project("voltage").plot(ax=ax,label=f"Amplitude: {sig_gen_Vpp_values[iBin]} V")
-        ax.legend(loc="best")
-        #ax.set_yscale("log")
-        #ax.set_ylim(10,None)
-        ax.set_xlim(-100,100)
-        ax.set_title("Recorded Waveform Values")
-        fig.savefig("step_response_waveform_hist.png")
-        fig.savefig("step_response_waveform_hist.pdf")
-        
-        fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=False)
-        waveform_hists[0].plot2d(ax=ax,norm=PHOSPHOR_HIST_NORM)
-        waveform_profile = waveform_hists[0].profile("voltage")
-        waveform_profile.plot(ax=ax,color="r")
-        #ax.set_xlim(-20,40)
-        ax.set_ylim(-5,15)
-        fig.suptitle(f"Amplitude: {sig_gen_Vpp_values[0]} V")
-        fig.savefig("step_response_waveform.png")
+            analyze_waveform_dset(sgs_dir["waveforms_raw"],sig_gen_Vpp)
         
 
 if __name__ == "__main__":
