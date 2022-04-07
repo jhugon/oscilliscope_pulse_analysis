@@ -78,7 +78,7 @@ def setup_trig(ip,level,holdoff,sweep="normal",channel="channel1"):
     instr.write(":trigger:edge:slope positive")
     instr.write(f":trigger:edge:level {level:g}")
 
-def collect_waveforms(ip,out_file,nwaveforms,channel="channel1"):
+def collect_waveforms(ip,out_file,nwaveforms,channel="channel1",nRetries=3):
     """
     Collects a bunch of triggers worth of waveforms, saving to the open h5py
     file or directory given in out_file using oscilliscope at ip, channel. 
@@ -120,23 +120,36 @@ def collect_waveforms(ip,out_file,nwaveforms,channel="channel1"):
     waveforms.dims[1].label = "time"
     waveforms.dims[1].attach_scale(time_ds)
     for i in range(nwaveforms):
-        instr.write(":single")
-        time.sleep(0.1)
-        instr.ask(":trigger:status?")
-        time.sleep(0.1)
-        trigger_status = instr.ask(":trigger:status?")
-        if trigger_status != "STOP":
-            raise Exception(f"Trigger status should be STOP for raw waveform reading, not {trigger_status}")
-        data_raw = instr.ask_raw(":waveform:data?".encode("ASCII"))
-        if data_raw[:1] != b"#":
-            raise Exception("Data should start with #")
-        nbytes_size = int(data_raw[1:2].decode("ascii"))
-        size = int(data_raw[2:2+nbytes_size].decode("ascii"))
-        data_start = 2+nbytes_size
-        data_endp1 = data_start+size
-        if size != waveform_length:
-            raise Exception(f"Data payload size {size} != {waveform_length} waveform_length")
-        data_raw = np.frombuffer(data_raw[data_start:data_endp1],dtype=np.uint8)
+        iTry = 0
+        data_raw = None
+        while iTry < nRetries:
+            try:
+                instr.write(":single")
+                time.sleep(0.1)
+                instr.ask(":trigger:status?")
+                time.sleep(0.1)
+                trigger_status = instr.ask(":trigger:status?")
+                if trigger_status != "STOP":
+                    raise Exception(f"Trigger status should be STOP for raw waveform reading, not {trigger_status}")
+                data_raw = instr.ask_raw(":waveform:data?".encode("ASCII"))
+                if data_raw[:1] != b"#":
+                    raise Exception("Data should start with #")
+                nbytes_size = int(data_raw[1:2].decode("ascii"))
+                size = int(data_raw[2:2+nbytes_size].decode("ascii"))
+                data_start = 2+nbytes_size
+                data_endp1 = data_start+size
+                if size != waveform_length:
+                    raise Exception(f"Data payload size {size} != {waveform_length} waveform_length")
+                data_raw = np.frombuffer(data_raw[data_start:data_endp1],dtype=np.uint8)
+                if len(data_raw) != waveform_length:
+                    raise Exception(f"Extracted waveform len {len(data_raw)} != {waveform_length} expected waveform_length")
+            except Exception as e:
+                print(f"Warning on capture of waveform number {i}: {e}",flush=True)
+                iTry += 1
+            else:
+                break
+        if data_raw is None:
+            raise Exception(f"Couldn't collect waveform number {i} after {nRetries} tries")
         waveforms[i,:] = data_raw
 
 

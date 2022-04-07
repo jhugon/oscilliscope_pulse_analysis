@@ -84,6 +84,6 @@ def analyze_step_response_data(fn):
 
 if __name__ == "__main__":
     ip = "192.168.55.2"
-    #out_fn = collect_positive_step_response_data(ip,[0.01,0.03,0.05,0.1,0.3,0.5],20)
-    fn = "step_response_2022-04-07T10:08:46_20waveforms.hdf5"
+    fn = collect_positive_step_response_data(ip,[0.01,0.03,0.05,0.1,0.3,0.5],20)
+    #fn = "step_response_2022-04-07T10:08:46_20waveforms.hdf5"
     analyze_step_response_data(fn)
