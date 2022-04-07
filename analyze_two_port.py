@@ -9,6 +9,7 @@ import h5py
 from hist import Hist
 import matplotlib.pyplot as mpl
 import matplotlib.colors
+from scipy import signal
 
 import vxi11
 
@@ -57,6 +58,23 @@ def collect_bipolar_step_response_data(ip,amplitudes_sig_gen,nWaveforms,in_chann
     verts_in = [(x,0.) for x in scale_in]
     return collect_step_response_data(ip,verts_in,verts_sig_gen,nWaveforms,in_channel=in_channel,sig_gen_channel=sig_gen_channel,horiz=horiz)
 
+def find_waveform_bottom_top(waveform_hist):
+        v_hist_array = waveform_hist.project("voltage").values()
+        v_hist_array_max = max(v_hist_array)
+        peak_indices, peak_props = signal.find_peaks(v_hist_array,height=v_hist_array_max*0.2)
+        peak_heights = peak_props["peak_heights"]
+        peak_widths = signal.peak_widths(v_hist_array,peak_indices)[0]
+        results = []
+        if len(peak_indices) == 2:
+            for iPeak in range(len(peak_indices)):
+                peak_index = peak_indices[iPeak]
+                peak_width = peak_widths[iPeak]
+                peak_hist = waveform_hist.project("voltage")[int(peak_index-2*peak_width):int(np.ceil(peak_index+2*peak_width))]
+                peak_mean = np.average(peak_hist.axes[0].centers,weights=peak_hist.values())
+                results.append(peak_mean)
+        else:
+            return [None,None]
+        return results
 
 def analyze_step_response_data(fn):
 
@@ -68,22 +86,34 @@ def analyze_step_response_data(fn):
             sgs_dir = sr_dir[sgs_key]
             sig_gen_Vpp = sgs_dir.attrs["amplitude"]
             sig_gen_Vpp_values.append(sig_gen_Vpp)
-            waveform_hist = make_hist_waveformVtime(sgs_dir["waveforms_raw"],time_units="ns",voltage_units="mV")
+            waveform_hist = make_hist_waveformVtime(sgs_dir["waveforms_raw"],time_units="ns",voltage_units="mV",downsample_time_by=10)
             waveform_hists.append(waveform_hist)
+            bottom,top = find_waveform_bottom_top(waveform_hist)
+            print(sig_gen_Vpp,bottom,top)
+            
         fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=False)
         for iBin in range(len(sig_gen_Vpp_values)):
             waveform_hists[iBin].project("voltage").plot(ax=ax,label=f"Amplitude: {sig_gen_Vpp_values[iBin]} V")
         ax.legend(loc="best")
-        ax.set_yscale("log")
-        #ax.set_xlim(-0.1,0.1)
-        ax.set_ylim(10,None)
+        #ax.set_yscale("log")
+        #ax.set_ylim(10,None)
+        ax.set_xlim(-100,100)
         ax.set_title("Recorded Waveform Values")
         fig.savefig("step_response_waveform_hist.png")
         fig.savefig("step_response_waveform_hist.pdf")
         
+        fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=False)
+        waveform_hists[0].plot2d(ax=ax,norm=PHOSPHOR_HIST_NORM)
+        waveform_profile = waveform_hists[0].profile("voltage")
+        waveform_profile.plot(ax=ax,color="r")
+        #ax.set_xlim(-20,40)
+        ax.set_ylim(-5,15)
+        fig.suptitle(f"Amplitude: {sig_gen_Vpp_values[0]} V")
+        fig.savefig("step_response_waveform.png")
+        
 
 if __name__ == "__main__":
     ip = "192.168.55.2"
-    fn = collect_positive_step_response_data(ip,[0.01,0.03,0.05,0.1,0.3,0.5],20)
-    #fn = "step_response_2022-04-07T10:08:46_20waveforms.hdf5"
+    #fn = collect_positive_step_response_data(ip,[0.01,0.03,0.05,0.1,0.3,0.5],20)
+    fn = "step_response_2022-04-07T10:26:50_20waveforms.hdf5"
     analyze_step_response_data(fn)
