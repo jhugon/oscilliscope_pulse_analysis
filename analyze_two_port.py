@@ -10,6 +10,7 @@ from hist import Hist
 import matplotlib.pyplot as mpl
 import matplotlib.colors
 from scipy import signal
+from scipy import interpolate
 
 import vxi11
 
@@ -76,38 +77,45 @@ def find_waveform_bottom_top(waveform_hist):
             return [None,None]
         return results
 
-def analyze_waveform_dset(waveform_dset,sig_gen_Vpp):
+def analyze_step_waveform_dset(waveform_dset,sig_gen_Vpp):
+
         caption = f"Sig-Gen Vpp = {sig_gen_Vpp}"
         waveform_hist = make_hist_waveformVtime(waveform_dset,time_units="ns",voltage_units="mV",downsample_time_by=10)
         bottom,top = find_waveform_bottom_top(waveform_hist)
         Vpp = top-bottom
+        mid = (top+bottom)/2.
 
         waveform_profile = waveform_hist.profile("voltage")
+        waveform_spline = interpolate.UnivariateSpline(waveform_profile.axes[0].edges[:-1],waveform_profile.values(),k=2,s=0)
 
         Vmax = max(waveform_profile.values())
         Vmin = min(waveform_profile.values())
 
         overshoot = (Vmax-top)/Vpp
         undershoot = (bottom-Vmin)/Vpp
+        t50 = 0.
 
         statistics = {
             "top": top,
             "bottom": bottom,
+            "mid" : mid,
             "Vpp" : Vpp,
             "max" : Vmax,
             "min" : Vmin,
             "overshoot": overshoot,
             "undershoot": undershoot,
+            "t50": t50,
         }
         print(caption)
         print(statistics)
-
 
         fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=False)
         waveform_hist.plot2d(ax=ax,norm=PHOSPHOR_HIST_NORM)
         ax.axhline(bottom,c="0.5")
         ax.axhline(top,c="0.5")
         waveform_profile.plot(ax=ax,color="r")
+        x = np.linspace(-20,40)
+        ax.plot(x,waveform_spline(x))
         ax.set_xlim(-20,40)
         #ax.set_ylim(-5,15)
         fig.suptitle(caption)
@@ -126,7 +134,7 @@ def analyze_step_response_data(fn):
             sgs_dir = sr_dir[sgs_key]
             sig_gen_Vpp = sgs_dir.attrs["amplitude"]
             sig_gen_Vpp_values.append(sig_gen_Vpp)
-            analyze_waveform_dset(sgs_dir["waveforms_raw"],sig_gen_Vpp)
+            analyze_step_waveform_dset(sgs_dir["waveforms_raw"],sig_gen_Vpp)
         
 
 if __name__ == "__main__":
