@@ -14,6 +14,8 @@ import boost_histogram as bh
 import matplotlib.colors
 import zfit
 
+PHOSPHOR_HIST_NORM=matplotlib.colors.PowerNorm(gamma=0.3)
+
 def calibrate_waveforms(waveforms_dset):
     slope = waveforms_dset.attrs["calib_slope"]
     intercept = waveforms_dset.attrs["calib_intercept"]
@@ -61,9 +63,9 @@ def decode_voltage_units(s):
     else:
         raise ValueError(f"Couldn't decode voltage unit: '{s}'")
 
-def plot_hist_waveformVtime(ax,waveforms_dset,time_units="us",voltage_units="V",downsample_time_by=100):
+def make_hist_waveformVtime(waveforms_dset,time_units="us",voltage_units="V",downsample_time_by=100):
     """
-    Plot a "phosphor oscilloscope" looking histogram of the waveforms in waveforms_dset on matplotlib ax.
+    Make a "phosphor oscilloscope" looking histogram of the waveforms in waveforms_dset.
 
     time_units: s, ms, us, ns
 
@@ -83,16 +85,16 @@ def plot_hist_waveformVtime(ax,waveforms_dset,time_units="us",voltage_units="V",
     tMin = ts[0]*time_sf
     tMax = (ts[-1]+ts.attrs["sample_spacing"])*time_sf
 
-    nVBins = waveforms_dset.attrs["calib_N_steps"]+1
+    nVBins = waveforms_dset.attrs["calib_N_steps"]
     vMin = waveforms_dset.attrs["calib_min"]*voltage_sf
     vMax = (waveforms_dset.attrs["calib_max"]+waveforms_dset.attrs["calib_slope"])*voltage_sf
 
     waveforms = calibrate_waveforms(waveforms_dset)
 
-    waveform_hist = Hist.new.Reg(nTBins,tMin,tMax,name="time",label=f"Time [{time_units}]").Reg(nVBins,vMin,vMax,name="waveform",label=f"Waveform [{voltage_units}]").Double()
+    waveform_hist = Hist.new.Reg(nTBins,tMin,tMax,name="time",label=f"Time [{time_units}]").Reg(nVBins,vMin,vMax,name="voltage",label=f"Voltage [{voltage_units}]").Double()
     waveform_hist.fill(ts_broadcast.flatten()*time_sf,waveforms.flatten()*voltage_sf)
 
-    waveform_hist.plot2d(ax=ax,norm=matplotlib.colors.PowerNorm(gamma=0.3))#,vmax=5000))
+    return waveform_hist
 
 def plot_pdf_over_hist(ax,pdf,hist,limits,label="Fit"):
     x = np.linspace(limits[0],limits[1],1000)
@@ -108,5 +110,8 @@ if __name__ == "__main__":
     with h5py.File(fn) as f:
         waveforms_raw = f["waveforms_raw"]
         fig, ax = mpl.subplots(figsize=(6,6))
-        plot_hist_waveformVtime(ax,waveforms_raw,voltage_units="mV")
+        hist = make_hist_waveformVtime(waveforms_raw,voltage_units="mV",downsample_time_by=10)
+        hist.plot2d(ax=ax,norm=PHOSPHOR_HIST_NORM)
+        ax.set_xlim(-0.5,0.5)
+        #hist.project("voltage").plot1d(ax=ax)
         fig.savefig("test.png")
