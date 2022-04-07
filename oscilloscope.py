@@ -91,7 +91,6 @@ def collect_waveforms(ip,out_file,nwaveforms,channel="channel1"):
     instr.write(f":waveform:source {channel}")
     instr.write(":waveform:mode raw")
     instr.write(":waveform:format byte")
-    #instr.write(":waveform:points 1000")
 
     instr.write(":stop")
 
@@ -101,16 +100,22 @@ def collect_waveforms(ip,out_file,nwaveforms,channel="channel1"):
     yreference = float(instr.ask(":waveform:yreference?"))
     yincrement = float(instr.ask(":waveform:yincrement?"))
     waveform_length = int(instr.ask(":waveform:points?"))
-    #print(f":waveform:points? is {waveform_length}")
 
     time_raw = np.arange(waveform_length)
     time_calib = time_raw*xincrement+xorigin
 
     time_ds = out_file.create_dataset("time",data=time_calib)
     time_ds.attrs["units"] = "s"
+    time_ds.attrs["sample_spacing"] = xincrement
+    time_ds.attrs["sample_frequency"] = 1./xincrement
     time_ds.make_scale("sample time")
-    waveforms = out_file.create_dataset("waveforms",(nwaveforms,waveform_length))
-    waveforms.attrs["units"] = "V"
+    waveforms = out_file.create_dataset("waveforms_raw",(nwaveforms,waveform_length),dtype=np.uint8)
+    waveforms.attrs["help"] = "Change waveforms to float, multiply by calib_slope and add calib_intercept to get waveform values in V"
+    waveforms.attrs["calib_slope"] = yincrement
+    waveforms.attrs["calib_intercept"] = -yincrement*(yreference+yorigin)
+    waveforms.attrs["calib_min"] = waveforms.attrs["calib_intercept"]
+    waveforms.attrs["calib_max"] = waveforms.attrs["calib_intercept"]+255*yincrement
+    waveforms.attrs["calib_N_steps"] = 255
     waveforms.dims[0].label = "waveform number"
     waveforms.dims[1].label = "time"
     waveforms.dims[1].attach_scale(time_ds)
@@ -132,8 +137,7 @@ def collect_waveforms(ip,out_file,nwaveforms,channel="channel1"):
         if size != waveform_length:
             raise Exception(f"Data payload size {size} != {waveform_length} waveform_length")
         data_raw = np.frombuffer(data_raw[data_start:data_endp1],dtype=np.uint8)
-        data = (data_raw*1.-yreference-yorigin)*yincrement
-        waveforms[i,:] = data
+        waveforms[i,:] = data_raw
 
 
 def setup_sig_gen(ip,source,function,Vpp,offset,frequency,phase=0.,symmetry=50.,duty_cycle=50.,out50Ohm=False):
@@ -157,3 +161,19 @@ def setup_sig_gen(ip,source,function,Vpp,offset,frequency,phase=0.,symmetry=50.,
     else:
         instr.write(f":source{source}:output:impedance omeg") # High Z
     instr.write(f":source{source}:output:state on")
+
+if __name__ == "__main__":
+
+    ip = "192.168.55.2"
+    channel="channel1"
+    nWaveforms=20
+    now = datetime.datetime.now().replace(microsecond=0)
+    setup_vert(ip,100e-3,0,probe=1,channel=channel)
+    setup_horiz(ip,1e-6,0)
+    setup_trig(ip,0,10e-6,sweep="single",channel=channel)
+
+    print(f"Collecting {nWaveforms}")
+    out_file_name = "dummy_waveforms_{}_{:d}waveforms.hdf5".format(now.isoformat(),nWaveforms)
+    print(f"Output filename is: {out_file_name}")
+    with h5py.File(out_file_name,"w") as out_file:
+        collect_waveforms(ip,out_file,nWaveforms,channel=channel)
