@@ -234,7 +234,7 @@ def collect_sin_wave_data(ip,freqs,measure_time=2.,in_channel="channel1",referen
     setup_vert(ip,1,0,probe=1,channel=reference_channel)
 
     with h5py.File(out_file_name,"w") as out_file:
-        frequencies = out_file.create_dataset("frequencies",data=freqs)
+        frequencies = out_file.create_dataset("frequencies",nFreqs)
         amplitudes = out_file.create_dataset("amplitudes",nFreqs)
         reference_amplitudes = out_file.create_dataset("reference_amplitudes",nFreqs)
         phases = out_file.create_dataset("phases",nFreqs)
@@ -244,10 +244,34 @@ def collect_sin_wave_data(ip,freqs,measure_time=2.,in_channel="channel1",referen
             print(f"Collecting data for {freq} Hz sin wave")
             amp = do_measurement(ip,"vamp",in_channel,measure_time=measure_time)
             ref_amp = do_measurement(ip,"vamp",reference_channel,measure_time=measure_time)
+            frequency = do_measurement(ip,"frequency",reference_channel,measure_time=measure_time)
             phase = do_measurement(ip,"rrphase",in_channel,reference_channel,measure_time=measure_time)
             amplitudes[iFreq] = amp[0]
             reference_amplitudes[iFreq] = ref_amp[0]
             phases[iFreq] = phase[0]
+            frequencies[iFreq] = frequency[0]
+
+    return out_file_name
+
+def analyze_sin_wave_data(fn):
+    with h5py.File(fn) as f:
+        frequencies = f["frequencies"]
+        amplitudes = f["amplitudes"]
+        reference_amplitudes = f["reference_amplitudes"]
+        phases = f["phases"]
+        gain = amplitudes[:]/reference_amplitudes[:]
+        db = 20*np.log10(gain)
+        fig, (ax1,ax2) = mpl.subplots(2,figsize=(6,6),constrained_layout=True,sharex=True)
+        ax1.plot(frequencies[:],db)
+        ax2.plot(frequencies[:],phases[:])
+        ax1.set_ylabel("Response [dB]")
+        ax1.set_title("Sin Wave Response")
+        ax1.set_xscale("log")
+        ax2.set_xlabel("Frequency [Hz]")
+        ax2.set_ylabel("Phase [$^\circ$]")
+        fig.savefig("Sin_Response.png")
+        fig.savefig("Sin_Response.pdf")
+    
 
 if __name__ == "__main__":
     ip = "192.168.55.2"
@@ -257,4 +281,6 @@ if __name__ == "__main__":
     ##fn = collect_noise_data(ip,100,trigger_level=800e-6)
     #fn = "noise_2022-04-07T15:38:08_100waveforms.hdf5"
     #analyze_noise_data(fn)
-    collect_sin_wave_data(ip,[1e3,1e4,1e5,1e6,1e7])
+    fn = collect_sin_wave_data(ip,np.logspace(3,8,10),measure_time=10)
+    #fn = "sin_wave_2022-04-08T14:12:18_5freqs.hdf5"
+    analyze_sin_wave_data(fn)
