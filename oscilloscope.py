@@ -8,6 +8,13 @@ import datetime
 
 MODEL = "MSO5354"
 
+def auto_scale(ip):
+    instr =  vxi11.Instrument(ip)
+    idn = instr.ask("*IDN?")
+    if not (MODEL in idn):
+        raise Exception(f"Instrument at {ip} not a {MODEL}, it's a: {idn}")
+    instr.write(":autoscale")
+
 def find_smallest_setting(x):
     """
     Finds the smallest value in the 1-2-5 series that is larger than the given value
@@ -152,7 +159,7 @@ def collect_waveforms(ip,out_file,nwaveforms,channel="channel1",nRetries=3):
             raise Exception(f"Couldn't collect waveform number {i} after {nRetries} tries")
         waveforms[i,:] = data_raw
 
-def do_measurement(ip,measurement,source="channel1",measure_time=2):
+def do_measurement(ip,measurement,source="channel1",source2=None,measure_time=2):
     """
     measurement: "vamp", "vpp", "vrms", "frequency", "period", "rtime", "ftime"
     """
@@ -160,22 +167,30 @@ def do_measurement(ip,measurement,source="channel1",measure_time=2):
     idn = instr.ask("*IDN?")
     if not (MODEL in idn):
         raise Exception(f"Instrument at {ip} not a {MODEL}, it's a: {idn}")
-    instr.write(f":run")
-    instr.write(f":autoscale")
 
+    instr.write(f":run")
     instr.write(f":measure:threshold:default")
     instr.write(f":measure:mode precision")
     instr.write(f":measure:clear")
     instr.write(f":measure:statistic:display on")
 
-    instr.write(f":measure:statistic:item {measurement},{source}")
+    if source2 is None:
+        instr.write(f":measure:statistic:item {measurement},{source}")
+    else:
+        instr.write(f":measure:statistic:item {measurement},{source},{source2}")
     instr.write(f":measure:statistic:reset all")
     time.sleep(measure_time)
     instr.write(f":stop")
-    result_val = instr.ask(f":measure:statistic:item? averages,{measurement},{source}")
-    result_cnt = instr.ask(f":measure:statistic:item? cnt,{measurement},{source}")
-    result_std = instr.ask(f":measure:statistic:item? deviation,{measurement},{source}")
-    return result_val, result_std, result_cnt
+    if source2 is None:
+        result_val = instr.ask(f":measure:statistic:item? averages,{measurement},{source}")
+        result_cnt = instr.ask(f":measure:statistic:item? cnt,{measurement},{source}")
+        result_std = instr.ask(f":measure:statistic:item? deviation,{measurement},{source}")
+        return result_val, result_std, result_cnt
+    else:
+        result_val = instr.ask(f":measure:statistic:item? averages,{measurement},{source},{source2}")
+        result_cnt = instr.ask(f":measure:statistic:item? cnt,{measurement},{source},{source2}")
+        result_std = instr.ask(f":measure:statistic:item? deviation,{measurement},{source},{source2}")
+        return result_val, result_std, result_cnt
 
 def do_measurements(ip,measurements_and_sources,measure_time=2):
     """
@@ -194,9 +209,8 @@ def do_measurements(ip,measurements_and_sources,measure_time=2):
     idn = instr.ask("*IDN?")
     if not (MODEL in idn):
         raise Exception(f"Instrument at {ip} not a {MODEL}, it's a: {idn}")
-    instr.write(f":run")
-    instr.write(f":autoscale")
 
+    instr.write(f":run")
     instr.write(f":measure:threshold:default")
     instr.write(f":measure:mode precision")
     instr.write(f":measure:clear")
@@ -259,7 +273,6 @@ def setup_sig_gen(ip,source,function,Vpp,offset,frequency,phase=0.,symmetry=50.,
 if __name__ == "__main__":
 
     ip = "192.168.55.2"
-    """
     channel="channel1"
     nWaveforms=20
     now = datetime.datetime.now().replace(microsecond=0)
@@ -272,9 +285,10 @@ if __name__ == "__main__":
     print(f"Output filename is: {out_file_name}")
     with h5py.File(out_file_name,"w") as out_file:
         collect_waveforms(ip,out_file,nWaveforms,channel=channel)
-    """
 
-    result = do_measurement(ip,"vamp")
+    result = do_measurement(ip,"vamp",source="channel1")
     print(result)
-    result = do_measurement(ip,"frequency")
+    result = do_measurement(ip,"vamp",source="channel2")
+    print(result)
+    result = do_measurement(ip,"frequency",source="channel1")
     print(result)

@@ -223,11 +223,38 @@ def analyze_noise_data(fn):
         print(f"Dataset Standard Deviation: {dataset_std*1e6:.1f} μV")
 
 
+def collect_sin_wave_data(ip,freqs,measure_time=2.,in_channel="channel1",reference_channel="channel2",sig_gen_channel="1",sig_gen_amp=0.05):
+    now = datetime.datetime.now().replace(microsecond=0)
+    nFreqs = len(freqs)
+    print(f"Collecting for {nFreqs} frequencies")
+    out_file_name = "sin_wave_{}_{:d}freqs.hdf5".format(now.isoformat(),nFreqs)
+    print(f"Output filename is: {out_file_name}")
+
+    setup_vert(ip,1,0,probe=1,channel=in_channel)
+    setup_vert(ip,1,0,probe=1,channel=reference_channel)
+
+    with h5py.File(out_file_name,"w") as out_file:
+        frequencies = out_file.create_dataset("frequencies",data=freqs)
+        amplitudes = out_file.create_dataset("amplitudes",nFreqs)
+        reference_amplitudes = out_file.create_dataset("reference_amplitudes",nFreqs)
+        phases = out_file.create_dataset("phases",nFreqs)
+        for iFreq,freq in enumerate(freqs):
+            setup_sig_gen(ip,sig_gen_channel,"sin",sig_gen_amp,0.,freq,out50Ohm=True)
+            auto_scale(ip)
+            print(f"Collecting data for {freq} Hz sin wave")
+            amp = do_measurement(ip,"vamp",in_channel,measure_time=measure_time)
+            ref_amp = do_measurement(ip,"vamp",reference_channel,measure_time=measure_time)
+            phase = do_measurement(ip,"rrphase",in_channel,reference_channel,measure_time=measure_time)
+            amplitudes[iFreq] = amp[0]
+            reference_amplitudes[iFreq] = ref_amp[0]
+            phases[iFreq] = phase[0]
+
 if __name__ == "__main__":
     ip = "192.168.55.2"
-    ##fn = collect_positive_step_response_data(ip,[0.01,0.03,0.05,0.1,0.3],100,gain=10.)
-    fn = "step_response_2022-04-07T15:16:35_100waveforms.hdf5"
-    analyze_step_response_data(fn)
-    #fn = collect_noise_data(ip,100,trigger_level=800e-6)
-    fn = "noise_2022-04-07T15:38:08_100waveforms.hdf5"
-    analyze_noise_data(fn)
+    ###fn = collect_positive_step_response_data(ip,[0.01,0.03,0.05,0.1,0.3],100,gain=10.)
+    #fn = "step_response_2022-04-07T15:16:35_100waveforms.hdf5"
+    #analyze_step_response_data(fn)
+    ##fn = collect_noise_data(ip,100,trigger_level=800e-6)
+    #fn = "noise_2022-04-07T15:38:08_100waveforms.hdf5"
+    #analyze_noise_data(fn)
+    collect_sin_wave_data(ip,[1e3,1e4,1e5,1e6,1e7])
