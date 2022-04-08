@@ -269,6 +269,10 @@ def analyze_sin_wave_data(fn):
         ax1.set_xscale("log")
         ax2.set_xlabel("Frequency [Hz]")
         ax2.set_ylabel("Phase [$^\circ$]")
+        gain_axis = ax1.secondary_yaxis('right', 
+                            functions=(lambda x: x/20.,lambda x: 20*x)
+                    )
+        gain_axis.set_ylabel("Gain [Power of 10]")
         fig.savefig("Sin_Response.png")
         fig.savefig("Sin_Response.pdf")
     
@@ -281,6 +285,6 @@ if __name__ == "__main__":
     ##fn = collect_noise_data(ip,100,trigger_level=800e-6)
     #fn = "noise_2022-04-07T15:38:08_100waveforms.hdf5"
     #analyze_noise_data(fn)
-    fn = collect_sin_wave_data(ip,np.logspace(3,8,10),measure_time=10)
-    #fn = "sin_wave_2022-04-08T14:12:18_5freqs.hdf5"
+    #fn = collect_sin_wave_data(ip,np.logspace(3,8,10),measure_time=10)
+    fn = "sin_wave_2022-04-08T14:27:14_10freqs.hdf5"
     analyze_sin_wave_data(fn)
