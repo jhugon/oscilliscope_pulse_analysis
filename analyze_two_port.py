@@ -14,6 +14,15 @@ from scipy import interpolate
 
 import vxi11
 
+def get_description():
+    try:
+        result = input("Enter a description for data collection run and then press enter:")
+    except EOFError as e:
+        print(f"EOFError while reading from stdin \"{e}\", exiting.")
+        sys.exit(1)
+    else:
+        return result
+
 def collect_step_response_data(ip,verts_in,verts_sig_gen,nWaveforms,in_channel="channel1",sig_gen_channel="1",horiz=(500e-9,0),trigger_thresholds=None):
     """
     Generates a square waveform and records the resulting input waveforms.
@@ -28,8 +37,12 @@ def collect_step_response_data(ip,verts_in,verts_sig_gen,nWaveforms,in_channel="
     if trigger_thresholds is None:
         trigger_thresholds = np.zeros(len(verts_in))
 
+    print(f"Ensure signal generator channel {sig_gen_channel} is hooked up to the input of the DUT and oscilloscope {in_channel} is hooked up to the DUT output.")
+    description = get_description()
     with h5py.File(out_file_name,"w") as out_file:
         step_response_grp = out_file.create_group("step_response")
+        step_response_grp.attrs["description"] = description
+        step_response_grp.attrs["starttime"] = now.isoformat()
         for iVert,(vert_in,vert_sig_gen,trigger_threshold) in enumerate(zip(verts_in,verts_sig_gen,trigger_thresholds)):
             amp_group = step_response_grp.create_group(f"sig_gen_setting{iVert}")
             amp_group.attrs["amplitude"] = vert_in[0]
@@ -163,6 +176,10 @@ def analyze_step_response_data(fn):
 
     with h5py.File(fn) as f:
         sr_dir = f["step_response"]
+        run_description = sr_dir.attrs["description"]
+        run_starttime = sr_dir.attrs["starttime"]
+        print(f"Run start time: {run_starttime}")
+        print(f"Run description: {run_description}")
         sig_gen_Vpp_values = []
         stats = []
         for sgs_key in sr_dir:
@@ -199,8 +216,12 @@ def collect_noise_data(ip,nWaveforms,trigger_level=0,in_channel="channel1"):
     setup_trig(ip,trigger_level,10e-6,sweep="single",channel=in_channel)
     time.sleep(0.5)
 
+    print(f"Ensure DUT input is appropriately terminated and oscilloscope {in_channel} is hooked up to the DUT output.")
+    description = get_description()
     with h5py.File(out_file_name,"w") as out_file:
         noise_grp = out_file.create_group("noise")
+        noise_grp.attrs["description"] = description
+        noise_grp.attrs["starttime"] = now.isoformat()
         collect_waveforms(ip,noise_grp,nWaveforms,channel=in_channel)
 
     return out_file_name
@@ -209,6 +230,10 @@ def collect_noise_data(ip,nWaveforms,trigger_level=0,in_channel="channel1"):
 def analyze_noise_data(fn):
     with h5py.File(fn) as f:
         noise_dir = f["noise"]
+        run_description = noise_dir.attrs["description"]
+        run_starttime = noise_dir.attrs["starttime"]
+        print(f"Run start time: {run_starttime}")
+        print(f"Run description: {run_description}")
         waveform_dset = noise_dir["waveforms_raw"]
         waveform_ffts, fft_freqs = fft_waveforms(waveform_dset)
         mean_fft_amp = np.sum(abs(waveform_ffts),axis=0)/waveform_ffts.shape[0]
@@ -233,11 +258,16 @@ def collect_sin_wave_data(ip,freqs,measure_time=2.,in_channel="channel1",referen
     setup_vert(ip,1,0,probe=1,channel=in_channel)
     setup_vert(ip,1,0,probe=1,channel=reference_channel)
 
+    print(f"Ensure signal generator channel {sig_gen_channel} is hooked up to the input of the DUT and oscilloscope {in_channel} is hooked up to the DUT output.")
+    description = get_description()
     with h5py.File(out_file_name,"w") as out_file:
-        frequencies = out_file.create_dataset("frequencies",nFreqs)
-        amplitudes = out_file.create_dataset("amplitudes",nFreqs)
-        reference_amplitudes = out_file.create_dataset("reference_amplitudes",nFreqs)
-        phases = out_file.create_dataset("phases",nFreqs)
+        sin_grp = out_file.create_group("sin_response")
+        sin_grp.attrs["description"] = description
+        sin_grp.attrs["starttime"] = now.isoformat()
+        frequencies = sin_grp.create_dataset("frequencies",nFreqs)
+        amplitudes = sin_grp.create_dataset("amplitudes",nFreqs)
+        reference_amplitudes = sin_grp.create_dataset("reference_amplitudes",nFreqs)
+        phases = sin_grp.create_dataset("phases",nFreqs)
         for iFreq,freq in enumerate(freqs):
             setup_sig_gen(ip,sig_gen_channel,"sin",sig_gen_amp,0.,freq,out50Ohm=True)
             auto_scale(ip)
@@ -255,10 +285,15 @@ def collect_sin_wave_data(ip,freqs,measure_time=2.,in_channel="channel1",referen
 
 def analyze_sin_wave_data(fn):
     with h5py.File(fn) as f:
-        frequencies = f["frequencies"]
-        amplitudes = f["amplitudes"]
-        reference_amplitudes = f["reference_amplitudes"]
-        phases = f["phases"]
+        sin_grp = f["sin_response"]
+        run_description = sin_grp.attrs["description"]
+        run_starttime = sin_grp.attrs["starttime"]
+        print(f"Run start time: {run_starttime}")
+        print(f"Run description: {run_description}")
+        frequencies = sin_grp["frequencies"]
+        amplitudes = sin_grp["amplitudes"]
+        reference_amplitudes = sin_grp["reference_amplitudes"]
+        phases = sin_grp["phases"]
         gain = amplitudes[:]/reference_amplitudes[:]
         db = 20*np.log10(gain)
         fig, (ax1,ax2) = mpl.subplots(2,figsize=(6,6),constrained_layout=True,sharex=True)
@@ -278,13 +313,44 @@ def analyze_sin_wave_data(fn):
     
 
 if __name__ == "__main__":
+    import argparse
     ip = "192.168.55.2"
-    ###fn = collect_positive_step_response_data(ip,[0.01,0.03,0.05,0.1,0.3],100,gain=10.)
-    #fn = "step_response_2022-04-07T15:16:35_100waveforms.hdf5"
-    #analyze_step_response_data(fn)
-    ##fn = collect_noise_data(ip,100,trigger_level=800e-6)
-    #fn = "noise_2022-04-07T15:38:08_100waveforms.hdf5"
-    #analyze_noise_data(fn)
-    #fn = collect_sin_wave_data(ip,np.logspace(3,8,10),measure_time=10)
-    fn = "sin_wave_2022-04-08T14:27:14_10freqs.hdf5"
-    analyze_sin_wave_data(fn)
+
+    
+    parser = argparse.ArgumentParser(description='Analyze a two-port circuit with an oscilloscope.')
+    parser.add_argument('mode',
+                        help='The type of analysis to do',choices=["noise","step","sin"])
+    parser.add_argument("--analysisonly",'-a',
+                        default=None,
+                        help="Only perform analysis on the given file, don't collect data")
+    parser.add_argument("--oscilloscope",'-o',
+                        default=ip,
+                        help=f"The location of the oscilloscope. Default: {ip}")
+    
+    args = parser.parse_args()
+
+    fn = args.analysisonly
+
+    if args.mode == "noise":
+        if not fn:
+            print("Collecting noise data...")
+            fn = collect_noise_data(ip,100,trigger_level=800e-6)
+        else:
+            print(f"Analyzing noise data from file: {fn}")
+        analyze_noise_data(fn)
+    elif args.mode == "step":
+        if not fn:
+            print("Collecting step-response data...")
+            fn = collect_positive_step_response_data(ip,[0.01,0.03,0.05,0.1,0.3],100,gain=10.)
+        else:
+            print(f"Analyzing step-response data from file: {fn}")
+        analyze_step_response_data(fn)
+    elif args.mode == "sin":
+        if not fn:
+            print("Collecting sin-wave response data...")
+            fn = collect_sin_wave_data(ip,np.logspace(3,8,10),measure_time=10)
+        else:
+            print(f"Analyzing sin-wave response data from file: {fn}")
+        analyze_sin_wave_data(fn)
+    else:
+        raise ValueError(f"Unknown analysis mode: {mode}")
