@@ -30,6 +30,14 @@ def find_smallest_setting(x):
     return result_significand*10**exp
 
 
+def disable_channel(ip,channel="channel1"):
+    instr =  vxi11.Instrument(ip)
+    idn = instr.ask("*IDN?")
+    if not (MODEL in idn):
+        raise Exception(f"Instrument at {ip} not a {MODEL}, it's a: {idn}")
+    instr.write(f":{channel}:display off")
+
+
 def setup_vert(ip,scale,offset,probe=10,coupling="dc",bwlimit="off",channel="channel1"):
     """
     scale and offset are floats in volts
@@ -179,7 +187,7 @@ def do_measurement(ip,measurement,source="channel1",source2=None,measure_time=2)
     else:
         instr.write(f":measure:statistic:item {measurement},{source},{source2}")
     instr.write(f":measure:statistic:reset all")
-    time.sleep(measure_time)
+    time.sleep(int(measure_time))
     instr.write(f":stop")
     if source2 is None:
         result_val = instr.ask(f":measure:statistic:item? averages,{measurement},{source}")
@@ -269,6 +277,14 @@ def setup_sig_gen(ip,source,function,Vpp,offset,frequency,phase=0.,symmetry=50.,
     else:
         instr.write(f":source{source}:output:impedance omeg") # High Z
     instr.write(f":source{source}:output:state on")
+
+def turn_off_sig_gens(ip,sources=["1","2"]):
+    instr =  vxi11.Instrument(ip)
+    idn = instr.ask("*IDN?")
+    if not (MODEL in idn):
+        raise Exception(f"Instrument at {ip} not a {MODEL}, it's a: {idn}")
+    for source in sources:
+        instr.write(f":source{source}:output:state off")
 
 if __name__ == "__main__":
 

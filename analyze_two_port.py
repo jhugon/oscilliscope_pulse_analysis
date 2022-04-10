@@ -39,6 +39,9 @@ def collect_step_response_data(ip,verts_in,verts_sig_gen,nWaveforms,in_channel="
     out_file_name = "step_response_{}_{:d}waveforms.hdf5".format(now.isoformat(),nWaveforms)
     print(f"Output filename is: {out_file_name}")
 
+    for ch in ["channel"+str(i) for i in range(1,5)]:
+        if ch != in_channel:
+            disable_channel(ip,ch)
     setup_horiz(ip,*horiz)
     with h5py.File(out_file_name,"w") as out_file:
         step_response_grp = out_file.create_group("step_response")
@@ -62,6 +65,7 @@ def collect_step_response_data(ip,verts_in,verts_sig_gen,nWaveforms,in_channel="
             time.sleep(0.5)
             collect_waveforms(ip,amp_group,nWaveforms,channel=in_channel)
         step_response_grp.attrs["status"] = "success"
+    turn_off_sig_gens(ip)
 
     return out_file_name
 
@@ -221,6 +225,9 @@ def collect_noise_data(ip,nWaveforms,trigger_level=0,in_channel="channel1"):
     out_file_name = "noise_{}_{:d}waveforms.hdf5".format(now.isoformat(),nWaveforms)
     print(f"Output filename is: {out_file_name}")
 
+    for ch in ["channel"+str(i) for i in range(1,5)]:
+        if ch != in_channel:
+            disable_channel(ip,ch)
     setup_horiz(ip,1e-6,0)
     setup_vert(ip,1e-3,0,probe=1,channel=in_channel)
     setup_trig(ip,trigger_level,10e-6,sweep="single",channel=in_channel)
@@ -267,6 +274,9 @@ def collect_sin_wave_data(ip,freqs,measure_time=2.,in_channel="channel1",referen
     now = datetime.datetime.now().replace(microsecond=0)
     out_file_name = "sin_wave_{}_{:d}freqs.hdf5".format(now.isoformat(),nFreqs)
     print(f"Output filename is: {out_file_name}")
+    for ch in ["channel"+str(i) for i in range(1,5)]:
+        if ch != in_channel and ch != reference_channel:
+            disable_channel(ip,ch)
     setup_vert(ip,1,0,probe=1,channel=in_channel)
     setup_vert(ip,1,0,probe=1,channel=reference_channel)
 
@@ -294,6 +304,7 @@ def collect_sin_wave_data(ip,freqs,measure_time=2.,in_channel="channel1",referen
             phases[iFreq] = phase[0]
             frequencies[iFreq] = frequency[0]
         sin_grp.attrs["status"] = "success"
+    turn_off_sig_gens(ip)
 
     return out_file_name
 
