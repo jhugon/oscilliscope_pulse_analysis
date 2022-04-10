@@ -267,9 +267,9 @@ def analyze_noise_data(fn):
         print(f"Dataset Standard Deviation: {dataset_std*1e6:.1f} μV")
 
 
-def collect_sin_wave_data(ip,freqs,measure_time=2.,in_channel="channel1",reference_channel="channel2",sig_gen_channel="1",sig_gen_amp=0.05):
+def collect_sin_wave_data(ip,freqs,n_avg=2,in_channel="channel1",reference_channel="channel2",sig_gen_channel="1",sig_gen_amp=0.05):
     nFreqs = len(freqs)
-    print(f"Collecting for {measure_time} s at each of {nFreqs} frequencies:\n    {freqs} Hz")
+    print(f"Collecting {n_avg} waveforms at each of {nFreqs} frequencies:\n    {freqs} Hz")
     print(f"Ensure signal generator channel {sig_gen_channel} is hooked up to both the input of the DUT and oscilloscope {reference_channel}.")
     print(f"Also ensure oscilloscope {in_channel} is hooked up to the DUT output.")
     description = get_description()
@@ -286,7 +286,7 @@ def collect_sin_wave_data(ip,freqs,measure_time=2.,in_channel="channel1",referen
         sin_grp = out_file.create_group("sin_response")
         sin_grp.attrs["description"] = description
         sin_grp.attrs["starttime"] = now.isoformat()
-        sin_grp.attrs["frequency measurement duration"] = measure_time
+        sin_grp.attrs["frequency averaged over N waveforms"] = n_avg
         sin_grp.attrs["signal generator amplitude"] = sig_gen_amp
         sin_grp.attrs["status"] = "fail"
         sin_grp.attrs["oscilloscope input channel"] = in_channel
@@ -299,10 +299,10 @@ def collect_sin_wave_data(ip,freqs,measure_time=2.,in_channel="channel1",referen
             setup_sig_gen(ip,sig_gen_channel,"sin",sig_gen_amp,0.,freq,out50Ohm=True)
             auto_scale(ip)
             print(f"Collecting data for {freq} Hz sin wave")
-            amp = do_measurement(ip,"vamp",in_channel,measure_time=measure_time)
-            ref_amp = do_measurement(ip,"vamp",reference_channel,measure_time=measure_time)
-            frequency = do_measurement(ip,"frequency",reference_channel,measure_time=measure_time)
-            phase = do_measurement(ip,"rrphase",in_channel,reference_channel,measure_time=measure_time)
+            amp = do_measurement(ip,"vamp",in_channel,n_avg=n_avg)
+            ref_amp = do_measurement(ip,"vamp",reference_channel,n_avg=n_avg)
+            frequency = do_measurement(ip,"frequency",reference_channel,n_avg=n_avg)
+            phase = do_measurement(ip,"rrphase",in_channel,reference_channel,n_avg=n_avg)
             amplitudes[iFreq] = amp[0]
             reference_amplitudes[iFreq] = ref_amp[0]
             phases[iFreq] = phase[0]
@@ -387,7 +387,7 @@ if __name__ == "__main__":
     elif args.mode == "sin":
         if not fn:
             print("Collecting sin-wave response data...")
-            fn = collect_sin_wave_data(ip,np.logspace(3,8,10),measure_time=n_waveforms)
+            fn = collect_sin_wave_data(ip,np.logspace(3,8,10),n_avg=n_waveforms)
         else:
             print(f"Analyzing sin-wave response data from file: {fn}")
         analyze_sin_wave_data(fn)

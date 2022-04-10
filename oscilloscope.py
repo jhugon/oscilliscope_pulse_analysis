@@ -167,9 +167,10 @@ def collect_waveforms(ip,out_file,nwaveforms,channel="channel1",nRetries=3):
             raise Exception(f"Couldn't collect waveform number {i} after {nRetries} tries")
         waveforms[i,:] = data_raw
 
-def do_measurement(ip,measurement,source="channel1",source2=None,measure_time=2):
+def do_measurement(ip,measurement,source="channel1",source2=None,n_avg=2):
     """
     measurement: "vamp", "vpp", "vrms", "frequency", "period", "rtime", "ftime"
+    n_avg: number of points to average over
     """
     instr =  vxi11.Instrument(ip)
     idn = instr.ask("*IDN?")
@@ -187,17 +188,30 @@ def do_measurement(ip,measurement,source="channel1",source2=None,measure_time=2)
     else:
         instr.write(f":measure:statistic:item {measurement},{source},{source2}")
     instr.write(f":measure:statistic:reset all")
-    time.sleep(int(measure_time))
+    n_collected = 0
+    n_reads = 0
+    printed_warning = False
+    while n_collected < n_avg:
+        time.sleep(1)
+        if source2 is None:
+            cnt = instr.ask(f":measure:statistic:item? cnt,{measurement},{source}")
+        else:
+            cnt = instr.ask(f":measure:statistic:item? cnt,{measurement},{source},{source2}")
+        n_collected = int(float(cnt))
+        n_reads += 1
+        if n_reads > 30 and not printed_warning:
+            print(f"Warning: measurment taking a while, collected {n_collected} measurement points of {n_avg} required")
+            printed_warning = True
     instr.write(f":stop")
     if source2 is None:
-        result_val = instr.ask(f":measure:statistic:item? averages,{measurement},{source}")
-        result_cnt = instr.ask(f":measure:statistic:item? cnt,{measurement},{source}")
-        result_std = instr.ask(f":measure:statistic:item? deviation,{measurement},{source}")
+        result_val = float(instr.ask(f":measure:statistic:item? averages,{measurement},{source}"))
+        result_cnt = int(float(instr.ask(f":measure:statistic:item? cnt,{measurement},{source}")))
+        result_std = float(instr.ask(f":measure:statistic:item? deviation,{measurement},{source}"))
         return result_val, result_std, result_cnt
     else:
-        result_val = instr.ask(f":measure:statistic:item? averages,{measurement},{source},{source2}")
-        result_cnt = instr.ask(f":measure:statistic:item? cnt,{measurement},{source},{source2}")
-        result_std = instr.ask(f":measure:statistic:item? deviation,{measurement},{source},{source2}")
+        result_val = float(instr.ask(f":measure:statistic:item? averages,{measurement},{source},{source2}"))
+        result_cnt = int(float(instr.ask(f":measure:statistic:item? cnt,{measurement},{source},{source2}")))
+        result_std = float(instr.ask(f":measure:statistic:item? deviation,{measurement},{source},{source2}"))
         return result_val, result_std, result_cnt
 
 def do_measurements(ip,measurements_and_sources,measure_time=2):
@@ -240,16 +254,16 @@ def do_measurements(ip,measurements_and_sources,measure_time=2):
     for measurement, sources in measurements_and_sources:
         if isinstance(sources,str):
             result = [float('nan')]*3
-            result[0] = instr.ask(f":measure:statistic:item? averages,{measurement},{sources}")
-            result[1] = instr.ask(f":measure:statistic:item? deviation,{measurement},{sources}")
-            result[2] = instr.ask(f":measure:statistic:item? cnt,{measurement},{sources}")
+            result[0] = float(instr.ask(f":measure:statistic:item? averages,{measurement},{sources}"))
+            result[1] = float(instr.ask(f":measure:statistic:item? deviation,{measurement},{sources}"))
+            result[2] = int(float(instr.ask(f":measure:statistic:item? cnt,{measurement},{sources}")))
             results.append(result)
         elif isinstance(sources[0],str) and isinstance(sources[1],str):
             instr.write(f":measure:statistic:item {measurement},{sources[0]},{sources[1]}")
             result = [float('nan')]*3
-            result[0] = instr.ask(f":measure:statistic:item? averages,{measurement},{sources[0]},{sources[1]}")
-            result[1] = instr.ask(f":measure:statistic:item? deviation,{measurement},{sources[0]},{sources[1]}")
-            result[2] = instr.ask(f":measure:statistic:item? cnt,{measurement},{sources[0]},{sources[1]}")
+            result[0] = float(instr.ask(f":measure:statistic:item? averages,{measurement},{sources[0]},{sources[1]}"))
+            result[1] = float(instr.ask(f":measure:statistic:item? deviation,{measurement},{sources[0]},{sources[1]}"))
+            result[2] = int(float(instr.ask(f":measure:statistic:item? cnt,{measurement},{sources[0]},{sources[1]}")))
             results.append(result)
         else:
             raise ValueError(f"Don't know what to do with sources: {sources}")
@@ -303,8 +317,4 @@ if __name__ == "__main__":
         collect_waveforms(ip,out_file,nWaveforms,channel=channel)
 
     result = do_measurement(ip,"vamp",source="channel1")
-    print(result)
-    result = do_measurement(ip,"vamp",source="channel2")
-    print(result)
-    result = do_measurement(ip,"frequency",source="channel1")
     print(result)
