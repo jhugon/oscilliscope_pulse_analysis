@@ -58,7 +58,7 @@ def collect_step_response_data(ip,verts_in,verts_sig_gen,nWaveforms,in_channel="
             amp_group.attrs["signal generator amplitude"] = vert_sig_gen[0]
             amp_group.attrs["signal generator offset"] = vert_sig_gen[1]
             amp_group.attrs["signal generator channel"] = sig_gen_channel
-            amp_group.attrs["oscilloscope channel"] = in_channel
+            amp_group.attrs["oscilloscope input channel"] = in_channel
             setup_vert(ip,vert_in[0],vert_in[1],probe=1,channel=in_channel)
             setup_trig(ip,trigger_threshold,10e-6,sweep="single",channel=in_channel)
             setup_sig_gen(ip,sig_gen_channel,"square",vert_sig_gen[0],vert_sig_gen[1],2e5,out50Ohm=True)
@@ -238,6 +238,8 @@ def collect_noise_data(ip,nWaveforms,trigger_level=0,in_channel="channel1"):
         noise_grp.attrs["description"] = description
         noise_grp.attrs["starttime"] = now.isoformat()
         noise_grp.attrs["status"] = "fail"
+        noise_grp.attrs["oscilloscope input channel"] = in_channel
+        noise_grp.attrs["trigger threshold"] = trigger_level
         collect_waveforms(ip,noise_grp,nWaveforms,channel=in_channel)
         noise_grp.attrs["status"] = "success"
 
@@ -287,6 +289,8 @@ def collect_sin_wave_data(ip,freqs,measure_time=2.,in_channel="channel1",referen
         sin_grp.attrs["frequency measurement duration"] = measure_time
         sin_grp.attrs["signal generator amplitude"] = sig_gen_amp
         sin_grp.attrs["status"] = "fail"
+        sin_grp.attrs["oscilloscope input channel"] = in_channel
+        sin_grp.attrs["oscilloscope reference channel"] = reference_channel
         frequencies = sin_grp.create_dataset("frequencies",nFreqs)
         amplitudes = sin_grp.create_dataset("amplitudes",nFreqs)
         reference_amplitudes = sin_grp.create_dataset("reference_amplitudes",nFreqs)
@@ -352,6 +356,7 @@ if __name__ == "__main__":
                         default=ip,
                         help=f"The location of the oscilloscope. Default: {ip}")
     parser.add_argument("--n_waveforms","-N",
+                        type=int,
                         default=5,
                         help="Number of waveforms to collect. For noise and step, this is the number of waveforms written to file. For sin, this is the number of waveforms averaged over."
     )
