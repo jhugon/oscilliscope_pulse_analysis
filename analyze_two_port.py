@@ -4,6 +4,7 @@ from oscilloscope import *
 from waveform_analysis import *
 import numpy as np
 import time
+import pprint
 import datetime
 import h5py
 from hist import Hist
@@ -192,8 +193,10 @@ def analyze_step_waveform_dset(waveform_dset,sig_gen_Vpp):
             "tSettle0p1pct" : tSettle0p1pct,
             "risetime10-90" : t90pct-t10pct,
             "risetime1-99" : t99pct-t1pct,
+            "HP time const" : bottom_step_fit_result.best_values["decay"],
+            "HP baseline" : bottom_step_fit_result.best_values["c"],
         }
-        print(statistics)
+        pprint.PrettyPrinter(indent=4).pprint(statistics)
 
         fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=False)
         #waveform_hist.plot2d(ax=ax,norm=PHOSPHOR_HIST_NORM)
