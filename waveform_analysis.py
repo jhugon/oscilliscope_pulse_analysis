@@ -6,7 +6,9 @@ from scipy.interpolate import UnivariateSpline
 from scipy.optimize import minimize_scalar
 from scipy import fft
 from scipy import signal
+from scipy import optimize
 #from scipy import signal.windows
+import lmfit
 import matplotlib.pyplot as mpl
 import h5py
 from hist import Hist
@@ -103,6 +105,20 @@ def make_hist_waveformVtime(waveforms_dset,time_units="us",voltage_units="V",dow
     waveform_hist.fill(ts_broadcast.flatten()*time_sf,waveforms.flatten()*voltage_sf)
 
     return waveform_hist
+
+def fit_exp(xdata,ydata,amplitude=220.,decay=1550.,c=13.):
+    """
+    Fit an exponential to xdata and ydata
+    """
+    expmodel = lmfit.models.ExponentialModel()
+    constmodel = lmfit.models.ConstantModel()
+    model = expmodel + constmodel
+    params = model.make_params()
+    params["amplitude"].set(amplitude,vary=True)
+    params["decay"].set(decay,vary=True)
+    params["c"].set(value=c,vary=True)
+    result = model.fit(ydata,params=params,x=xdata)
+    return result
 
 def plot_pdf_over_hist(ax,pdf,hist,limits,label="Fit"):
     x = np.linspace(limits[0],limits[1],1000)

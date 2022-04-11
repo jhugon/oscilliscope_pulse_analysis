@@ -13,6 +13,7 @@ h5py = "*"
 scipy = "*"
 hist = {extras = ["plot"], version = "*"}
 zfit = "*"
+lmfit = "*"
 
 [dev-packages]
 

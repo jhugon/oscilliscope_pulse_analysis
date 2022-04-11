@@ -101,33 +101,58 @@ def find_waveform_bottom_top(waveform_hist):
             return [None,None]
         return results
 
-def find_step_times(profile,bottom,mid,top):
+def find_step_times(profile,step_fraction):
     # clip 10% on either end
     nBinsOrig = profile.size
     profile = profile[int(0.1*nBinsOrig):int(0.9*nBinsOrig)]
-    Vpp = top-bottom
-    V1pct = Vpp*0.01+bottom
-    V10pct = Vpp*0.1+bottom
-    V90pct = Vpp*0.9+bottom
-    V99pct = Vpp*0.99+bottom
-    tMid = profile.axes[0].centers[profile.values() >= mid][0]
-    profile_before_mid = profile[:tMid*1j]
-    profile_after_mid = profile[tMid*1j:]
-    t1pct = profile_before_mid.axes[0].centers[profile_before_mid.values() <= V1pct][-1]
-    t10pct = profile_before_mid.axes[0].centers[profile_before_mid.values() <= V10pct][-1]
-    t90pct = profile_after_mid.axes[0].centers[profile_after_mid.values() >= V90pct][0]
-    t99pct = profile_after_mid.axes[0].centers[profile_after_mid.values() >= V99pct][0]
-    tSettle1pct = profile_after_mid.axes[0].centers[abs(profile_after_mid.values()-top)/(top-bottom) > 0.01][-1]
-    tSettle0p1pct = profile_after_mid.axes[0].centers[abs(profile_after_mid.values()-top)/(top-bottom) > 0.005][-1]
+    step_fraction = step_fraction[int(0.1*nBinsOrig):int(0.9*nBinsOrig)]
+    tMid = profile.axes[0].centers[step_fraction >= 0.5][0]
+
+    t1pct = float('nan')
+    t10pct = float('nan')
+    t90pct = float('nan')
+    t99pct = float('nan')
+    tSettle1pct = float('nan')
+    tSettle0p1pct = float('nan')
+    try:
+        t1pct = profile.axes[0].centers[step_fraction <= 0.01][-1]
+    except IndexError:
+        pass
+    try:
+        t10pct = profile.axes[0].centers[step_fraction <= 0.1][-1]
+    except IndexError:
+        pass
+    try:
+        t90pct = profile.axes[0].centers[step_fraction >= 0.9][0]
+    except IndexError:
+        pass
+    try:
+        t99pct = profile.axes[0].centers[step_fraction >= 0.99][0]
+    except IndexError:
+        pass
+    try:
+        tSettle1pct = profile.axes[0].centers[abs(step_fraction-1.) > 0.01][-1]
+    except IndexError:
+        pass
+    try:
+        tSettle0p1pct = profile.axes[0].centers[abs(step_fraction-1.) > 0.001][-1]
+    except IndexError:
+        pass
     return tMid, t1pct, t10pct, t90pct, t99pct, tSettle1pct, tSettle0p1pct
 
 def analyze_step_waveform_dset(waveform_dset,sig_gen_Vpp):
 
         caption = f"Sig-Gen Vpp = {sig_gen_Vpp}"
-        waveform_hist = make_hist_waveformVtime(waveform_dset,time_units="ns",voltage_units="mV",downsample_time_by=10)
-        waveform_hist = waveform_hist[-200j:1000j,:][0:len,0:len] # second slice gets rid of overflow
+        print(caption)
+        waveform_hist = make_hist_waveformVtime(waveform_dset,time_units="ns",voltage_units="mV",downsample_time_by=5)
+        waveform_hist = waveform_hist[-1000j:1000j,:][0:len,0:len] # second slice gets rid of overflow
         waveform_profile = waveform_hist.profile("voltage")
-        bottom,top = find_waveform_bottom_top(waveform_hist)
+        waveform_profile_values = waveform_profile.values()
+        sample_spacing = waveform_profile.axes[0].edges[1]-waveform_profile.axes[0].edges[0]
+        sample_centers = waveform_profile.axes[0].centers
+        waveform_profile_deriv = (waveform_profile_values[2:] - waveform_profile_values[:-2])/2./sample_spacing
+        waveform_profile_2deriv = (waveform_profile_values[2:]+waveform_profile_values[:-2]-2*waveform_profile_values[1:-1])/sample_spacing**2
+        bottom,top = float('nan'), float('nan')
         Vmax = max(waveform_profile.values())
         Vmin = min(waveform_profile.values())
         Vpp = float('nan')
@@ -135,18 +160,19 @@ def analyze_step_waveform_dset(waveform_dset,sig_gen_Vpp):
         overshoot = float('nan')
         undershoot = float('nan')
         tMid, t1pct, t10pct, t90pct, t99pct, tSettle1pct, tSettle0p1pct = [float('nan')]*7
-        try:
-            overshoot = (Vmax-top)/Vpp
-            mid = (top+bottom)/2.
-            undershoot = (bottom-Vmin)/Vpp
-            Vpp = top-bottom
-        except TypeError:
-            Vpp = float('nan')
-            mid = float('nan')
-            overshoot = float('nan')
-            undershoot = float('nan')
-        else:
-            tMid, t1pct, t10pct, t90pct, t99pct, tSettle1pct, tSettle0p1pct = find_step_times(waveform_profile,bottom,mid,top)
+
+        top_step_fit_result = fit_exp(waveform_profile[500j:900j].axes[0].centers,waveform_profile[500j:900j].values())
+        bottom_step_fit_result = fit_exp(waveform_profile[-500j:-200j].axes[0].centers,waveform_profile[-500j:-200j].values(),amplitude=-60)
+        t_step_start = waveform_profile[-200j:0j].axes[0].centers[waveform_profile[-200j:0j].values()-bottom_step_fit_result.eval(x=waveform_profile[-200j:0j].axes[0].centers) < np.percentile(bottom_step_fit_result.residual,99)][-1]
+
+        step_fraction = (waveform_profile.values()-bottom_step_fit_result.eval(x=sample_centers))/(top_step_fit_result.eval(x=sample_centers)-bottom_step_fit_result.eval(x=sample_centers))
+        top = top_step_fit_result.eval(x=0.)
+        bottom = bottom_step_fit_result.eval(x=0.)
+        overshoot = max(step_fraction)-1.
+        mid = (top+bottom)/2.
+        undershoot = -min(step_fraction)
+        Vpp = top-bottom
+        tMid, t1pct, t10pct, t90pct, t99pct, tSettle1pct, tSettle0p1pct = find_step_times(waveform_profile,step_fraction)
 
         statistics = {
             "top": top,
@@ -167,20 +193,35 @@ def analyze_step_waveform_dset(waveform_dset,sig_gen_Vpp):
             "risetime10-90" : t90pct-t10pct,
             "risetime1-99" : t99pct-t1pct,
         }
+        print(statistics)
 
         fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=False)
-        waveform_hist.plot2d(ax=ax,norm=PHOSPHOR_HIST_NORM)
-        #ax.axvline(t10pct,c="0.5")
-        #ax.axvline(t90pct,c="0.5")
-        #ax.axvline(tSettle1pct,c="0")
-        #ax.axvline(tSettle0p1pct,c="0")
-        #ax.axhline(bottom,c="0.5")
-        #ax.axhline(top,c="0.5")
+        #waveform_hist.plot2d(ax=ax,norm=PHOSPHOR_HIST_NORM)
+        ax.axvline(t_step_start,c="k")
+        ax.axvline(t10pct,c="0.5")
+        ax.axvline(t90pct,c="0.5")
+        ax.axvline(tSettle1pct,c="0")
+        ax.axvline(tSettle0p1pct,c="0")
         waveform_profile.plot(ax=ax,color="r")
+        #ax.plot(sample_centers[1:-1],waveform_profile_deriv*10,color="k")
+        #ax.plot(sample_centers[1:-1],waveform_profile_2deriv*100,color="m")
+        ax.plot(sample_centers[:],top_step_fit_result.eval(x=sample_centers[:]),color="y")
+        ax.plot(sample_centers[:],bottom_step_fit_result.eval(x=sample_centers[:]),color="y")
         #ax.set_xlim(t1pct-1*(t99pct-t1pct),t99pct+5*(t99pct-t1pct))
         #ax.set_ylim(Vmin-0.1*Vpp,Vmax+0.1*Vpp)
+        ax.set_xlim(-50,200)
+        #ax.set_ylim(-100,350)
         fig.suptitle(caption)
         fig.savefig(f"step_response_waveform_{sig_gen_Vpp}.png")
+
+        fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=False)
+        ax.plot(sample_centers,step_fraction,color="g")
+        ax.axvline(t_step_start,c="k")
+        ax.axvline(t10pct,c="0.5")
+        ax.axvline(t90pct,c="0.5")
+        ax.axvline(tSettle1pct,c="0")
+        ax.axvline(tSettle0p1pct,c="0")
+        fig.savefig(f"step_fraction_{sig_gen_Vpp}.png")
         return statistics
 
 
@@ -281,7 +322,6 @@ def collect_sin_wave_data(ip,freqs,n_avg=2,in_channel="channel1",reference_chann
             disable_channel(ip,ch)
     setup_vert(ip,1,0,probe=1,channel=in_channel)
     setup_vert(ip,1,0,probe=1,channel=reference_channel)
-
     with h5py.File(out_file_name,"w") as out_file:
         sin_grp = out_file.create_group("sin_response")
         sin_grp.attrs["description"] = description
@@ -292,21 +332,36 @@ def collect_sin_wave_data(ip,freqs,n_avg=2,in_channel="channel1",reference_chann
         sin_grp.attrs["oscilloscope input channel"] = in_channel
         sin_grp.attrs["oscilloscope reference channel"] = reference_channel
         frequencies = sin_grp.create_dataset("frequencies",nFreqs)
+        frequencies_std = sin_grp.create_dataset("frequencies_std",nFreqs)
         amplitudes = sin_grp.create_dataset("amplitudes",nFreqs)
+        amplitudes_std = sin_grp.create_dataset("amplitudes_std",nFreqs)
         reference_amplitudes = sin_grp.create_dataset("reference_amplitudes",nFreqs)
         phases = sin_grp.create_dataset("phases",nFreqs)
+        phases_std = sin_grp.create_dataset("phases_std",nFreqs)
         for iFreq,freq in enumerate(freqs):
+            time.sleep(0.1)
             setup_sig_gen(ip,sig_gen_channel,"sin",sig_gen_amp,0.,freq,out50Ohm=True)
+            time.sleep(0.1)
             auto_scale(ip)
+            time.sleep(0.1)
+            setup_trig(ip,0.,10e-6,sweep="normal",channel=reference_channel)
+            time.sleep(0.1)
             print(f"Collecting data for {freq} Hz sin wave")
             amp = do_measurement(ip,"vamp",in_channel,n_avg=n_avg)
+            time.sleep(0.1)
             ref_amp = do_measurement(ip,"vamp",reference_channel,n_avg=n_avg)
+            time.sleep(0.1)
             frequency = do_measurement(ip,"frequency",reference_channel,n_avg=n_avg)
+            time.sleep(0.1)
             phase = do_measurement(ip,"rrphase",in_channel,reference_channel,n_avg=n_avg)
+            time.sleep(0.1)
             amplitudes[iFreq] = amp[0]
+            amplitudes_std[iFreq] = amp[1]
             reference_amplitudes[iFreq] = ref_amp[0]
             phases[iFreq] = phase[0]
+            phases_std[iFreq] = phase[1]
             frequencies[iFreq] = frequency[0]
+            frequencies_std[iFreq] = frequency[1]
         sin_grp.attrs["status"] = "success"
     turn_off_sig_gens(ip)
 
@@ -320,14 +375,22 @@ def analyze_sin_wave_data(fn):
         print(f"Run start time: {run_starttime}")
         print(f"Run description: {run_description}")
         frequencies = sin_grp["frequencies"]
+        frequencies_std = sin_grp["frequencies_std"]
         amplitudes = sin_grp["amplitudes"]
+        amplitudes_std = sin_grp["amplitudes_std"]
         reference_amplitudes = sin_grp["reference_amplitudes"]
         phases = sin_grp["phases"]
+        phases_std = sin_grp["phases_std"]
         gain = amplitudes[:]/reference_amplitudes[:]
+        gain_std = amplitudes_std[:]/reference_amplitudes[:]
+        print(frequencies[:])
+        print(gain)
+        print(phases[:])
         db = 20*np.log10(gain)
+        db_std = 20*np.log10(gain+gain_std) - db
         fig, (ax1,ax2) = mpl.subplots(2,figsize=(6,6),constrained_layout=True,sharex=True)
-        ax1.plot(frequencies[:],db)
-        ax2.plot(frequencies[:],phases[:])
+        ax1.errorbar(frequencies[:],db,db_std,xerr=frequencies_std[:],ls="",marker="o")
+        ax2.errorbar(frequencies[:],phases[:],phases_std[:],xerr=frequencies_std[:],ls="",marker="o")
         ax1.set_ylabel("Response [dB]")
         ax1.set_title("Sin Wave Response")
         ax1.set_xscale("log")
@@ -362,7 +425,8 @@ if __name__ == "__main__":
     )
     parser.add_argument("--expected_gain",
                         default=1.,
-                        help="Expected gain for step. Used to set vertical scale and trigger threshold."
+                        type=float,
+                        help="Expected gain for step. Used to set vertical scale and trigger threshold. Default 1."
     )
     
     args = parser.parse_args()
@@ -388,6 +452,7 @@ if __name__ == "__main__":
         if not fn:
             print("Collecting sin-wave response data...")
             fn = collect_sin_wave_data(ip,np.logspace(3,8,10),n_avg=n_waveforms)
+            #fn = collect_sin_wave_data(ip,np.logspace(np.log10(5e6),np.log10(25e6),10),n_avg=n_waveforms)
         else:
             print(f"Analyzing sin-wave response data from file: {fn}")
         analyze_sin_wave_data(fn)
