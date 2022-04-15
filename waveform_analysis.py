@@ -106,6 +106,7 @@ def make_hist_waveformVtime(waveforms_dset,time_units="us",voltage_units="V",dow
 
     return waveform_hist
 
+
 def fit_exp(xdata,ydata,amplitude=220.,decay=1550.,c=13.):
     """
     Fit an exponential to xdata and ydata
@@ -120,6 +121,7 @@ def fit_exp(xdata,ydata,amplitude=220.,decay=1550.,c=13.):
     result = model.fit(ydata,params=params,x=xdata)
     return result
 
+
 def plot_pdf_over_hist(ax,pdf,hist,limits,label="Fit"):
     x = np.linspace(limits[0],limits[1],1000)
     y = zfit.run(pdf.pdf(x))
@@ -128,6 +130,77 @@ def plot_pdf_over_hist(ax,pdf,hist,limits,label="Fit"):
     bin_width = limited_hist.axes[0].widths[0]
     y *= bin_width
     ax.plot(x,y,label=label)
+
+
+def fit_e_height(data_np,nPeaks,limits):
+    obs = zfit.Space("peak_max_for_e_height",limits=limits)
+    e_height = zfit.Parameter(f"e_height",95,50,150)
+    delta_mus = []
+    mus = []
+    yields = []
+    sigmas = []
+    base_pdfs = []
+    ext_pdfs = []
+    #constraints = [zfit.constraint.GaussianConstraint(params=e_height,observation=95.,uncertainty=10.)]
+    constraints = []
+    peak_nums = []
+    for i in range(3,3+nPeaks):
+        peak_num = zfit.Parameter(f"peak_num_{i}",i,floating=False)
+        delta_mu = zfit.Parameter(f"delta_m_{i}", 0, -20,20)
+        mu = zfit.ComposedParameter(f"m_{i}", lambda eh, dm,pn: (pn)*eh+dm,params=[e_height,delta_mu,peak_num])
+        sigma = zfit.Parameter(f"sig_{i}", 16.,10,25)
+        yield_gauss = zfit.Parameter(f"yld_{i}",300,200,400)
+        gauss = zfit.pdf.Gauss(obs=obs, mu=mu, sigma=sigma)
+        delta_mus.append(delta_mu)
+        mus.append(mu)
+        sigmas.append(sigma)
+        yields.append(yield_gauss)
+        base_pdfs.append(gauss)
+        ext_pdfs.append(gauss.create_extended(yield_gauss))
+        constraints.append(zfit.constraint.GaussianConstraint(params=delta_mu,observation=0.,uncertainty=20.))
+    sum_pdf = zfit.pdf.SumPDF(pdfs=ext_pdfs)
+
+    data = zfit.Data.from_numpy(obs=obs,array=data_np)
+    nll = zfit.loss.ExtendedUnbinnedNLL(model=sum_pdf,data=data,constraints=constraints)
+
+    minimizer = zfit.minimize.Minuit()
+    result = minimizer.minimize(nll)
+    param_uncert = result.hesse()
+    print(result)
+
+    return sum_pdf
+
+
+def fit_gaussians(data_np,limits_list):
+    nLimits = len(limits_list)
+    obs = zfit.Space("peak_max",limits=(limits_list[0][0],limits_list[-1][-1]))
+    mus = []
+    yields = []
+    sigmas = []
+    base_pdfs = []
+    ext_pdfs = []
+    for i, limits in enumerate(limits_list):
+        mu = zfit.Parameter(f"mu_{i}", 0.5*(limits[1]+limits[0]),limits[0],limits[1])
+        sigma = zfit.Parameter(f"sigma_{i}", 50,10,100)
+        yield_gauss = zfit.Parameter(f"yield_{i}",1e2,0,1e3)
+        gauss = zfit.pdf.Gauss(obs=obs, mu=mu, sigma=sigma)
+        mus.append(mu)
+        sigmas.append(sigma)
+        yields.append(yield_gauss)
+        base_pdfs.append(gauss)
+        ext_pdfs.append(gauss.create_extended(yield_gauss))
+    sum_pdf = zfit.pdf.SumPDF(pdfs=ext_pdfs)
+
+    data = zfit.Data.from_numpy(obs=obs,array=data_np)
+    nll = zfit.loss.ExtendedUnbinnedNLL(model=sum_pdf,data=data)
+
+    minimizer = zfit.minimize.Minuit()
+    result = minimizer.minimize(nll)
+    param_uncert = result.hesse()
+    print(result)
+
+    return sum_pdf
+
 
 if __name__ == "__main__":
     fn = "dummy_waveforms_2022-04-07T09:41:47_20waveforms.hdf5"
