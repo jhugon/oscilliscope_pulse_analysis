@@ -167,6 +167,42 @@ def collect_waveforms(ip,out_file,nwaveforms,channel="channel1",nRetries=3):
             raise Exception(f"Couldn't collect waveform number {i} after {nRetries} tries")
         waveforms[i,:] = data_raw
 
+
+def collect_counter_data(ip,out_file,trigger_values,time_per_trig_val):
+    """
+    out_file: open h5py file to write to
+    trigger_values: a list of trigger levels (in millivolts) to collect counter data for
+    time_per_trig_val: how long to count for each trigger value, in seconds
+    """
+    instr =  vxi11.Instrument(ip)
+    idn = instr.ask("*IDN?")
+    if not (MODEL in idn):
+        raise Exception(f"Instrument at {ip} not a {MODEL}, it's a: {idn}")
+    instr.write(":counter:enable on")
+    instr.write(":counter:source channel1")
+    instr.write(":counter:mode totalize") # frequency period totalize
+
+    trigger_values_set_ds = out_file.create_dataset("trigger_values_set",data=trigger_values)
+    trigger_values_set_ds.attrs["units"] = "mV"
+    counts = out_file.create_dataset("counts",len(trigger_values))
+    counts.attrs["time_interval"] = time_per_trig_val
+    counts.attrs["time_interval_units"] = "s"
+    trigger_values_ds = out_file.create_dataset("trigger_values",len(trigger_values))
+    trigger_values_ds.attrs["units"] = "mV"
+    for i, trig_val in enumerate(trigger_values):
+        instr.write(":trigger:edge:level {:f}".format(trig_val*1e-3))
+        time.sleep(0.1)
+        trigger_val_readback = instr.ask(":trigger:edge:level?")
+        trigger_val_readback = float(trigger_val_readback)*1e3
+        time.sleep(0.1)
+        instr.write(":counter:totalize:clear")
+        time.sleep(time_per_trig_val)
+        count = instr.ask(":counter:current?")
+        counts[i] = count
+        trigger_values_ds[i] = trigger_val_readback
+        print("Count for set {} mV read {:.1f} mV trigger: {}".format(trig_val,trigger_val_readback,count))
+
+
 def do_measurement(ip,measurement,source="channel1",source2=None,n_avg=2):
     """
     measurement: "vamp", "vpp", "vrms", "frequency", "period", "rtime", "ftime"
