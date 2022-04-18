@@ -6,6 +6,7 @@ import numpy as np
 import time
 import pprint
 import datetime
+import sys
 import h5py
 from hist import Hist
 import matplotlib.pyplot as mpl
@@ -415,6 +416,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Analyze a two-port circuit with an oscilloscope.')
     parser.add_argument('mode',
                         help='The type of analysis to do',choices=["noise","step","sin"])
+    parser.add_argument("--printmetadata",'-p',
+                        default=None,
+                        help="Only print file metadata. Only one path allowed, but you may glob within quotes like './analyze_two_port.py noise -p \"noise*.hdf5\"'")
     parser.add_argument("--analysisonly",'-a',
                         default=None,
                         help="Only perform analysis on the given file, don't collect data")
@@ -438,6 +442,10 @@ if __name__ == "__main__":
     n_waveforms = args.n_waveforms
 
     if args.mode == "noise":
+        if args.printmetadata:
+            print("Noise file metadata:")
+            print_metadata(args.printmetadata,"noise")
+            sys.exit(0)
         if not fn:
             print("Collecting noise data...")
             fn = collect_noise_data(ip,n_waveforms,trigger_level=800e-6)
@@ -445,6 +453,10 @@ if __name__ == "__main__":
             print(f"Analyzing noise data from file: {fn}")
         analyze_noise_data(fn)
     elif args.mode == "step":
+        if args.printmetadata:
+            print("Step file metadata:")
+            print_metadata(args.printmetadata,"step_response")
+            sys.exit(0)
         if not fn:
             print("Collecting step-response data...")
             fn = collect_positive_step_response_data(ip,[0.01,0.03,0.05,0.1,0.3],n_waveforms,gain=args.expected_gain)
@@ -452,6 +464,10 @@ if __name__ == "__main__":
             print(f"Analyzing step-response data from file: {fn}")
         analyze_step_response_data(fn)
     elif args.mode == "sin":
+        if args.printmetadata:
+            print("Sin response file metadata:")
+            print_metadata(args.printmetadata,"sin_response")
+            sys.exit(0)
         if not fn:
             print("Collecting sin-wave response data...")
             fn = collect_sin_wave_data(ip,np.logspace(3,8,10),n_avg=n_waveforms)

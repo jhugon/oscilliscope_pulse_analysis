@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import sys
+import glob
 import numpy as np
 from scipy.interpolate import UnivariateSpline
 from scipy.optimize import minimize_scalar
@@ -201,6 +202,23 @@ def fit_gaussians(data_np,limits_list):
 
     return sum_pdf
 
+def print_metadata(fn,path):
+    fns = glob.glob(fn)
+    for fn in fns:
+        try:
+            with h5py.File(fn) as f:
+                grp = f[path]
+                run_description = grp.attrs["description"]
+                run_starttime = grp.attrs["starttime"]
+                run_status = grp.attrs["status"]
+                s = f'{fn} {run_status} {run_starttime} "{run_description}"'
+                print(s)
+        except KeyError as e:
+            print(f"Error: maybe this is the wrong kind of analysis file: {e} for file: {fn}")
+            sys.exit(1)
+        except OSError as e:
+            print(f"Error opening file: {e} for file: {fn}")
+            sys.exit(1)
 
 if __name__ == "__main__":
     fn = "dummy_waveforms_2022-04-07T09:41:47_20waveforms.hdf5"

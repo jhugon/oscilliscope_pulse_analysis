@@ -171,6 +171,9 @@ if __name__ == "__main__":
     ip = "192.168.55.2"
 
     parser = argparse.ArgumentParser(description='Collect and analyze pulses with an oscilloscope.')
+    parser.add_argument("--printmetadata",'-p',
+                        default=None,
+                        help="Only print file metadata. Only one path allowed, but you may glob within quotes like './analyze_pulses.py -p \"pulses*.hdf5\"'")
     parser.add_argument("--analysisonly",'-a',
                         default=None,
                         help="Only perform analysis on the given file, don't collect data")
@@ -186,6 +189,10 @@ if __name__ == "__main__":
 
     fn = args.analysisonly
     n_waveforms = args.n_waveforms
+    if args.printmetadata:
+        print("Pulse waveform file metadata:")
+        print_metadata(args.printmetadata,"/")
+        sys.exit(0)
     if not fn:
         print("Collecting pulse waveform data...")
         fn = collect_pulser_waveform_data(ip,n_waveforms)
