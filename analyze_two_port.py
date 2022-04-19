@@ -16,15 +16,6 @@ from scipy import interpolate
 
 import vxi11
 
-def get_description():
-    try:
-        result = input("Enter a description for the data collection run and then press enter: ")
-    except EOFError as e:
-        print(f"EOFError while reading from stdin \"{e}\", exiting.")
-        sys.exit(1)
-    else:
-        return result
-
 def collect_step_response_data(ip,verts_in,verts_sig_gen,nWaveforms,in_channel="channel1",sig_gen_channel="1",horiz=(500e-9,0),trigger_thresholds=None):
     """
     Generates a square waveform and records the resulting input waveforms.

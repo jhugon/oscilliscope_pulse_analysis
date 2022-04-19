@@ -20,12 +20,12 @@ from waveform_analysis import *
 
 def collect_pulser_waveform_data(ip,nWaveforms):
     channel="channel1"
-    trigger_hreshold = 200e-3
+    trigger_threshold = 200e-3
     setup_vert(ip,200e-3,-400e-3,probe=1,bwlimit="20M",channel=channel)
     setup_horiz(ip,50e-9,0)
-    setup_trig(ip,trigger_hreshold,10e-6,sweep="single",channel=channel)
+    setup_trig(ip,trigger_threshold,10e-6,sweep="single",channel=channel)
 
-    print(f"Collecting {nWaveforms}")
+    print(f"Collecting {nWaveforms} waveforms")
     print(f"Ensure oscilloscope {channel} is hooked up to the the DUT output.")
     description = get_description()
 
@@ -34,11 +34,11 @@ def collect_pulser_waveform_data(ip,nWaveforms):
     print(f"Output filename is: {out_file_name}")
     with h5py.File(out_file_name,"w") as out_file:
         out_file.attrs["trigger threshold"] = trigger_threshold
-        out_file.attrs["oscilloscope input channel"] = in_channel
+        out_file.attrs["oscilloscope input channel"] = channel
         out_file.attrs["description"] = description
         out_file.attrs["starttime"] = now.isoformat()
         out_file.attrs["status"] = "fail"
-        collect_waveforms(ip,out_file,nWaveforms,source=channel)
+        collect_waveforms(ip,out_file,nWaveforms,channel=channel)
         out_file.attrs["status"] = "success"
     return out_file_name
 
@@ -51,8 +51,14 @@ def analyze_pulses(in_file_name):
         run_starttime = in_file.attrs["starttime"]
         print(f"Run start time: {run_starttime}")
         print(f"Run description: {run_description}")
-        waveforms_dset = in_file["waveforms"]
-        waveform_units = waveforms_dset.attrs["units"]
+        waveforms_dset = None
+        try:
+            waveforms_dset = in_file["waveforms_raw"]
+        except KeyError:
+            print(f"Error retreiving \"waveforms_raw\" dataset from file {in_file_name}. Root of file contains: {list(in_file.keys())}",file=sys.stderr)
+            print("Exiting.",file=sys.stderr)
+            sys.exit(1)
+        waveform_units = "V"
         ts = waveforms_dset.dims[1][0]
         waveforms = calibrate_waveforms(waveforms_dset)
         nWaveforms, waveform_len = waveforms.shape
@@ -170,6 +176,8 @@ if __name__ == "__main__":
     import argparse
     ip = "192.168.55.2"
 
+    n_waveforms_defualt = 100
+
     parser = argparse.ArgumentParser(description='Collect and analyze pulses with an oscilloscope.')
     parser.add_argument("--printmetadata",'-p',
                         default=None,
@@ -182,12 +190,13 @@ if __name__ == "__main__":
                         help=f"The location of the oscilloscope. Default: {ip}")
     parser.add_argument("--n_waveforms","-N",
                         type=int,
-                        default=100,
-                        help="Number of waveforms to collect. This is the number of waveforms written to file."
+                        default=n_waveforms_defualt,
+                        help=f"Number of waveforms to collect. This is the number of waveforms written to file. Default: {n_waveforms_defualt}"
     )
     args = parser.parse_args()
 
     fn = args.analysisonly
+    ip = args.oscilloscope
     n_waveforms = args.n_waveforms
     if args.printmetadata:
         print("Pulse waveform file metadata:")

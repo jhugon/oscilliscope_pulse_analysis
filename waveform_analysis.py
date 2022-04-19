@@ -74,6 +74,17 @@ def decode_voltage_units(s):
     else:
         raise ValueError(f"Couldn't decode voltage unit: '{s}'")
 
+
+def get_description():
+    try:
+        result = input("Enter a description for the data collection run and then press enter: ")
+    except EOFError as e:
+        print(f"EOFError while reading from stdin \"{e}\", exiting.")
+        sys.exit(1)
+    else:
+        return result
+
+
 def make_hist_waveformVtime(waveforms_dset,time_units="us",voltage_units="V",downsample_time_by=100):
     """
     Make a "phosphor oscilloscope" looking histogram of the waveforms in waveforms_dset.
@@ -215,10 +226,8 @@ def print_metadata(fn,path):
                 print(s)
         except KeyError as e:
             print(f"Error: maybe this is the wrong kind of analysis file: {e} for file: {fn}")
-            sys.exit(1)
         except OSError as e:
             print(f"Error opening file: {e} for file: {fn}")
-            sys.exit(1)
 
 if __name__ == "__main__":
     fn = "dummy_waveforms_2022-04-07T09:41:47_20waveforms.hdf5"
