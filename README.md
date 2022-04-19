@@ -31,7 +31,7 @@ A few quantized pulse sizes seem to be well populated for:
 
 - Output: 50 ohm
 
-with some red LED and series resistor (100 ohm?)
+with the SMA to LED board and through-hole blue LED.
 
 ## Manuals:
 

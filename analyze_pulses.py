@@ -20,9 +20,13 @@ from waveform_analysis import *
 
 def collect_pulser_waveform_data(ip,nWaveforms):
     channel="channel1"
-    trigger_threshold = 200e-3
-    setup_vert(ip,200e-3,-400e-3,probe=1,bwlimit="20M",channel=channel)
-    setup_horiz(ip,50e-9,0)
+    trigger_threshold =200e-3
+    vert_scale = 200e-3
+    vert_offset = -400e-3
+    horiz_scale = 50e-9
+    horiz_offset = 0
+    setup_vert(ip,vert_scale,vert_offset,probe=1,bwlimit="20M",channel=channel)
+    setup_horiz(ip,horiz_scale,horiz_offset)
     setup_trig(ip,trigger_threshold,10e-6,sweep="single",channel=channel)
 
     print(f"Collecting {nWaveforms} waveforms")
@@ -107,12 +111,14 @@ def analyze_pulses(in_file_name):
         amax_filtered_hist = Hist.new.Reg(110,250,800,name="peak_max",label=f"Peak Maximum [m{waveform_units}]").Double()
         amax_filtered_hist.fill(amax_filtered*1e3)
         #fit_gaus_pdf = fit_gaussians(amax_filtered*1e3,[(250,350),(350,450),(450,525),(550,615)])
-        fit_e_height_pdf = fit_e_height(amax_filtered*1e3,4,limits=(250,615))
 
         fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=True)
         amax_filtered_hist.plot(ax=ax,label="Data")
-        #plot_pdf_over_hist(ax,fit_gaus_pdf,amax_filtered_hist,(250,615),label="Multi-Gaussian")
-        plot_pdf_over_hist(ax,fit_e_height_pdf,amax_filtered_hist,(250,615),label="e$^-$ Height Fit")
+        try:
+            fit_e_height_pdf = fit_e_height(amax_filtered*1e3,4,limits=(250,615))
+            plot_pdf_over_hist(ax,fit_e_height_pdf,amax_filtered_hist,(250,615),label="e$^-$ Height Fit")
+        except Exception as e:
+            pass
         ax.set_title("Filtered Waveforms")
         ax.set_ylabel(f"Waveforms / {amax_filtered_hist.axes[0].widths[0]:.0f} mV")
         ax.legend()
