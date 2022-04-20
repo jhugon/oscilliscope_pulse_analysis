@@ -93,6 +93,35 @@ def setup_trig(ip,level,holdoff,sweep="normal",channel="channel1"):
     instr.write(":trigger:edge:slope positive")
     instr.write(f":trigger:edge:level {level:g}")
 
+def get_oscilloscope_settings(instr,channel="channel1"):
+    idn = instr.ask("*IDN?")
+    if not (MODEL in idn):
+        raise Exception(f"Instrument at {ip} not a {MODEL}, it's a: {idn}")
+
+    result = {}
+
+    result["channel display"] = instr.ask(f":{channel}:display?")
+    result["vertical scale"] = instr.ask(f":{channel}:scale?")
+    result["vertical offset"] = instr.ask(f":{channel}:offset?")
+    result["channel probe"] = instr.ask(f":{channel}:probe?")
+    result["channel coupling"] = instr.ask(f":{channel}:coupling?")
+    result["channel bwlimit"] = instr.ask(f":{channel}:bwlimit?")
+
+    result["time scale"] = instr.ask(":timebase:scale?")
+    result["time offset"] = instr.ask(":timebase:offset?")
+
+    result["trigger coupling"] = instr.ask(":trigger:coupling?")
+    result["trigger holdoff"] = instr.ask(":trigger:holdoff?")
+    result["trigger noise rejection"] = instr.ask(":trigger:nreject?") # noise rejection
+    result["trigger mode"] = instr.ask(":trigger:mode?")
+    result["trigger edge source"] = instr.ask(":trigger:edge:source?")
+    result["trigger edge slope"] = instr.ask(":trigger:edge:slope?")
+    result["trigger edge level"] = instr.ask(":trigger:edge:level?")
+    result["trigger threshold"] = result["trigger edge level"]
+
+    return result
+
+
 def collect_waveforms(ip,out_file,nwaveforms,channel="channel1",nRetries=3):
     """
     Collects a bunch of triggers worth of waveforms, saving to the open h5py
@@ -103,6 +132,9 @@ def collect_waveforms(ip,out_file,nwaveforms,channel="channel1",nRetries=3):
     idn = instr.ask("*IDN?")
     if not (MODEL in idn):
         raise Exception(f"Instrument at {ip} not a {MODEL}, it's a: {idn}")
+
+    oscilliscope_settings = get_oscilloscope_settings(instr,channel)
+
     instr.write(f":waveform:source {channel}")
     instr.write(":waveform:mode raw")
     instr.write(":waveform:format byte")
@@ -125,12 +157,14 @@ def collect_waveforms(ip,out_file,nwaveforms,channel="channel1",nRetries=3):
     time_ds.attrs["sample_frequency"] = 1./xincrement
     time_ds.make_scale("sample time")
     waveforms = out_file.create_dataset("waveforms_raw",(nwaveforms,waveform_length),dtype=np.uint8)
+    waveforms.attrs.update(oscilliscope_settings)
     waveforms.attrs["help"] = "Change waveforms to float, multiply by calib_slope and add calib_intercept to get waveform values in V"
     waveforms.attrs["calib_slope"] = yincrement
     waveforms.attrs["calib_intercept"] = -yincrement*(yreference+yorigin)
     waveforms.attrs["calib_min"] = waveforms.attrs["calib_intercept"]
     waveforms.attrs["calib_max"] = waveforms.attrs["calib_intercept"]+255*yincrement
     waveforms.attrs["calib_N_steps"] = 255
+    waveforms.attrs["calib_units"] = "V"
     waveforms.dims[0].label = "waveform number"
     waveforms.dims[1].label = "time"
     waveforms.dims[1].attach_scale(time_ds)

@@ -215,7 +215,7 @@ def fit_gaussians(data_np,limits_list):
 
 def print_metadata(fn,path):
     fns = glob.glob(fn)
-    for fn in fns:
+    for fn in sorted(fns):
         try:
             with h5py.File(fn) as f:
                 grp = f[path]

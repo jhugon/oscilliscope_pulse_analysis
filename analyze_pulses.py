@@ -18,16 +18,17 @@ from oscilloscope import *
 from waveform_analysis import *
 
 
-def collect_pulser_waveform_data(ip,nWaveforms):
+def collect_pulser_waveform_data(ip,nWaveforms,keep_settings=False):
     channel="channel1"
     trigger_threshold =200e-3
     vert_scale = 200e-3
     vert_offset = -400e-3
     horiz_scale = 50e-9
     horiz_offset = 0
-    setup_vert(ip,vert_scale,vert_offset,probe=1,bwlimit="20M",channel=channel)
-    setup_horiz(ip,horiz_scale,horiz_offset)
-    setup_trig(ip,trigger_threshold,10e-6,sweep="single",channel=channel)
+    if not keep_settings:
+        setup_vert(ip,vert_scale,vert_offset,probe=1,bwlimit="20M",channel=channel)
+        setup_horiz(ip,horiz_scale,horiz_offset)
+        setup_trig(ip,trigger_threshold,10e-6,sweep="single",channel=channel)
 
     print(f"Collecting {nWaveforms} waveforms")
     print(f"Ensure oscilloscope {channel} is hooked up to the the DUT output.")
@@ -37,8 +38,6 @@ def collect_pulser_waveform_data(ip,nWaveforms):
     out_file_name = "pulses_{}_{:d}waveforms.hdf5".format(now.isoformat(),nWaveforms)
     print(f"Output filename is: {out_file_name}")
     with h5py.File(out_file_name,"w") as out_file:
-        out_file.attrs["trigger threshold"] = trigger_threshold
-        out_file.attrs["oscilloscope input channel"] = channel
         out_file.attrs["description"] = description
         out_file.attrs["starttime"] = now.isoformat()
         out_file.attrs["status"] = "fail"
@@ -72,6 +71,8 @@ def analyze_pulses(in_file_name):
         sample_frequency = 1./sample_period
         print(f"{waveforms_dset.shape[0]} waveforms ({nWaveforms} selected), each of {waveform_len} samples at sample frequency: {sample_frequency:.6g} Hz")
         print(f"filter cutoff frequency: {freq_cutoff:.6g} Hz, sigma: {1./freq_cutoff:.6g} s, FWHM: {2.355/freq_cutoff} s")
+        for key in waveforms_dset.attrs:
+            print(f"  {key}: {waveforms_dset.attrs[key]}")
 
         amax = np.amax(waveforms,axis=1)
         argmax = np.argmax(waveforms,axis=1)
@@ -199,6 +200,10 @@ if __name__ == "__main__":
                         default=n_waveforms_defualt,
                         help=f"Number of waveforms to collect. This is the number of waveforms written to file. Default: {n_waveforms_defualt}"
     )
+    parser.add_argument("--keepsettings","-k",
+                        action="store_true", default=False,
+                        help=f"Keep current oscilloscope vertical, horizontal, and trigger settings isntead of changing to the standardized settings."
+    )
     args = parser.parse_args()
 
     fn = args.analysisonly
@@ -210,7 +215,7 @@ if __name__ == "__main__":
         sys.exit(0)
     if not fn:
         print("Collecting pulse waveform data...")
-        fn = collect_pulser_waveform_data(ip,n_waveforms)
+        fn = collect_pulser_waveform_data(ip,n_waveforms,keep_settings=args.keepsettings)
     else:
         print(f"Analyzing pulse waveform data from file: {fn}")
     analyze_pulses(fn)
