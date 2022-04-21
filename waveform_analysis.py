@@ -119,6 +119,27 @@ def make_hist_waveformVtime(waveforms_dset,time_units="us",voltage_units="V",dow
     return waveform_hist
 
 
+def make_hist_waveformMinMax(waveforms_dset,voltage_units="V"):
+    """
+    v_units: V, mV, uV
+    """
+
+    voltage_sf, voltage_units = decode_voltage_units(voltage_units)
+
+    nVBins = waveforms_dset.attrs["calib_N_steps"]
+    vMin = waveforms_dset.attrs["calib_min"]*voltage_sf
+    vMax = (waveforms_dset.attrs["calib_max"]+waveforms_dset.attrs["calib_slope"])*voltage_sf
+
+    waveforms = calibrate_waveforms(waveforms_dset)
+
+    vmax_hist = Hist.new.Reg(nVBins,vMin,vMax,name="max_voltage",label=f"Max Voltage [{voltage_units}]").Double()
+    vmin_hist = Hist.new.Reg(nVBins,vMin,vMax,name="min_voltage",label=f"Min Voltage [{voltage_units}]").Double()
+    vmax_hist.fill(np.amax(waveforms,axis=1)*voltage_sf)
+    vmin_hist.fill(np.amin(waveforms,axis=1)*voltage_sf)
+
+    return vmin_hist, vmax_hist
+
+
 def fit_exp(xdata,ydata,amplitude=220.,decay=1550.,c=13.):
     """
     Fit an exponential to xdata and ydata

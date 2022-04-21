@@ -45,139 +45,82 @@ def collect_pulser_waveform_data(ip,nWaveforms,keep_settings=False):
         out_file.attrs["status"] = "success"
     return out_file_name
 
+def analyze_multiple_pulse_files(fns):
 
-def analyze_pulses(in_file_name):
-    freq_cutoff = 200e6 # Hz
+    fig_fft, ax_fft = mpl.subplots(figsize=(6,6),constrained_layout=True)
+    ax_fft.set_xlabel(f"Frequency [Hz]")
+    ax_fft.set_ylabel(f"Waveform Amplitude [V]")
+    ax_fft.set_title(f"Average Spectrum Over Waveforms")
+    ax_fft.set_xscale("log")
+    ax_fft.set_yscale("log")
 
-    with h5py.File(in_file_name) as in_file:
-        run_description = in_file.attrs["description"]
-        run_starttime = in_file.attrs["starttime"]
-        print(f"Run start time: {run_starttime}")
-        print(f"Run description: {run_description}")
-        waveforms_dset = None
-        try:
-            waveforms_dset = in_file["waveforms_raw"]
-        except KeyError:
-            print(f"Error retreiving \"waveforms_raw\" dataset from file {in_file_name}. Root of file contains: {list(in_file.keys())}",file=sys.stderr)
-            print("Exiting.",file=sys.stderr)
-            sys.exit(1)
-        waveform_units = "V"
-        ts = waveforms_dset.dims[1][0]
-        waveforms = calibrate_waveforms(waveforms_dset)
-        nWaveforms, waveform_len = waveforms.shape
-        ts_broadcast, _ = np.broadcast_arrays(ts,waveforms)
-        ts_units = ts.attrs["units"]
-        sample_period = ts[1]-ts[0]
-        sample_frequency = 1./sample_period
-        print(f"{waveforms_dset.shape[0]} waveforms ({nWaveforms} selected), each of {waveform_len} samples at sample frequency: {sample_frequency:.6g} Hz")
-        print(f"filter cutoff frequency: {freq_cutoff:.6g} Hz, sigma: {1./freq_cutoff:.6g} s, FWHM: {2.355/freq_cutoff} s")
-        for key in waveforms_dset.attrs:
-            print(f"  {key}: {waveforms_dset.attrs[key]}")
+    fig_vmin, ax_vmin = mpl.subplots(figsize=(6,6),constrained_layout=True)
+    ax_vmin.set_title(f"Waveform Minimum")
+    ax_vmin.set_yscale("log")
+    fig_vmax, ax_vmax = mpl.subplots(figsize=(6,6),constrained_layout=True)
+    ax_vmax.set_title(f"Waveform Maximum")
+    ax_vmax.set_yscale("log")
 
-        amax = np.amax(waveforms,axis=1)
-        argmax = np.argmax(waveforms,axis=1)
+    for fn in fns:
+        with h5py.File(fn) as in_file:
+            run_description = in_file.attrs["description"]
+            run_starttime = in_file.attrs["starttime"]
+            run_status = in_file.attrs["status"]
+            print(f"Run file: {fn}")
+            print(f"Run start time: {run_starttime}")
+            print(f"Run description: {run_description}")
+            if run_status != "success":
+                print(f"Run status: failure, skipping file")
+                continue
+            waveforms_dset = None
+            try:
+                waveforms_dset = in_file["waveforms_raw"]
+            except KeyError:
+                print(f"Error retreiving \"waveforms_raw\" dataset from file {fn}. Root of file contains: {list(in_file.keys())}",file=sys.stderr)
+                print("Exiting.",file=sys.stderr)
+                sys.exit(1)
+            waveform_units = "V"
+            ts = waveforms_dset.dims[1][0]
+            waveforms = calibrate_waveforms(waveforms_dset)
+            nWaveforms, waveform_len = waveforms.shape
+            ts_broadcast, _ = np.broadcast_arrays(ts,waveforms)
+            ts_units = ts.attrs["units"]
+            sample_period = ts[1]-ts[0]
+            sample_frequency = 1./sample_period
 
-        waveform_ffts = fft.rfft(waveforms[:,:])
-        fft_freqs = fft.rfftfreq(waveforms.shape[-1],d=sample_period)
-        waveform_fft_amp_mean = np.sum(abs(waveform_ffts),axis=0)/nWaveforms
+            amax = np.amax(waveforms,axis=1)
+            argmax = np.argmax(waveforms,axis=1)
+            amin = np.amin(waveforms,axis=1)
+            argmin = np.argmin(waveforms,axis=1)
+            argmax_ts = np.array([ts[x] for x in argmax])
 
-        gaussian_width = sample_frequency/freq_cutoff
-        window = signal.windows.gaussian(waveform_len,std=gaussian_width)
-        window = fft.fftshift(window)
-        window /= window.sum()
-        window_fft = fft.rfft(window)
+            waveform_ffts = fft.rfft(waveforms[:,:])
+            fft_freqs = fft.rfftfreq(waveforms.shape[-1],d=sample_period)
+            waveform_fft_amp_mean = np.sum(abs(waveform_ffts),axis=0)/nWaveforms
+            ax_fft.plot(fft_freqs,abs(waveform_fft_amp_mean),label=run_description)
 
-        waveform_filtered_ffts = waveform_ffts*window_fft
-        waveforms_filtered = fft.irfft(waveform_filtered_ffts,waveform_len)
-        waveform_filtered_hist = Hist.new.Reg(100,-200,200,name="time",label="Time [ns]").Reg(100,-200,900,name="waveform",label="Waveform [mV]").Double()
-        waveform_filtered_hist.fill(ts_broadcast[:,:].flatten()*1e9,waveforms_filtered[:,:].flatten()*1e3)
-        amax_filtered = np.amax(waveforms_filtered,axis=1)
-        argmax_filtered = np.argmax(waveforms_filtered,axis=1)
-        argmax_filtered_ts = np.array([ts[x] for x in argmax_filtered])
-        select_peak_location = np.logical_and(argmax_filtered_ts > -10e-9,argmax_filtered_ts < 40e-9)
-        print(f"filtered pulse peak goes from {min(amax_filtered)*1e3:.1f} to {max(amax_filtered)*1e3:.1f} mV, quartiles: {np.quantile(amax_filtered,0.25)*1e3:.1f}, {np.quantile(amax_filtered,0.5)*1e3:.1f}, {np.quantile(amax_filtered,0.75)*1e3:.1f} mV")
-        print(f"filtered pulse peak location goes from index {ts[int(min(argmax_filtered))]*1e9:.1f} to {ts[int(max(argmax_filtered))]*1e9:.1f} ns, quartiles: {ts[int(np.quantile(argmax_filtered,0.25))]*1e9:.1f}, {ts[int(np.quantile(argmax_filtered,0.5))]*1e9:.1f}, {ts[int(np.quantile(argmax_filtered,0.75))]*1e9:.1f} ns")
+            waveform_hist = make_hist_waveformVtime(waveforms_dset,time_units="ns",voltage_units="mV",downsample_time_by=10)
+            fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=False)
+            fig.suptitle(f"{run_starttime}\n{run_description}",wrap=True)
+            waveform_hist.plot2d(ax=ax,norm=PHOSPHOR_HIST_NORM)
+            fig.savefig(f"waveform_hist_{run_starttime}.png")
+            mpl.close(fig)
 
-        waveforms_filtered_shifted = waveforms_filtered[:,:]
-        for iWaveform in range(nWaveforms):
-            waveforms_filtered_shifted[iWaveform,:] = np.roll(waveforms_filtered_shifted[iWaveform,:],waveform_len//2-argmax_filtered[iWaveform])
-        waveforms_filtered_shifted_normalized = (waveforms_filtered_shifted.T/amax_filtered).T
+            waveform_min_hist, waveform_max_hist = make_hist_waveformMinMax(waveforms_dset,voltage_units="mV")
+            waveform_min_hist.plot(ax=ax_vmin,label=run_description)
+            waveform_max_hist.plot(ax=ax_vmax,label=run_description)
 
-        waveform_filtered_shifted_hist = Hist.new.Reg(100,-40,40,name="time",label="Time [ns]").Reg(100,200,800,name="waveform",label="Waveform [mV]").Double()
-        waveform_filtered_shifted_hist.fill(ts_broadcast[select_peak_location,:].flatten()*1e9,waveforms_filtered_shifted[select_peak_location,:].flatten()*1e3)
+    ax_fft.legend()
+    fig_fft.savefig("waveform_fft.png")
+    fig_fft.savefig("waveform_fft.pdf")
 
-        waveform_filtered_shifted_normalized_hist = Hist.new.Reg(100,-50,100,name="time",label="Time [ns]").Reg(100,-0.2,1.2,name="waveform",label="Waveform [arbitrary]").Double()
-        waveform_filtered_shifted_normalized_hist.fill(ts_broadcast[select_peak_location,:].flatten()*1e9,waveforms_filtered_shifted_normalized[select_peak_location,:].flatten())
+    ax_vmin.legend()
+    ax_vmax.legend()
+    fig_vmin.savefig("waveform_vmin.png")
+    fig_vmin.savefig("waveform_vmin.pdf")
+    fig_vmax.savefig("waveform_vmax.png")
+    fig_vmax.savefig("waveform_vmax.pdf")
 
-        amax_filtered_hist = Hist.new.Reg(110,250,800,name="peak_max",label=f"Peak Maximum [m{waveform_units}]").Double()
-        amax_filtered_hist.fill(amax_filtered*1e3)
-        #fit_gaus_pdf = fit_gaussians(amax_filtered*1e3,[(250,350),(350,450),(450,525),(550,615)])
-
-        fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=True)
-        amax_filtered_hist.plot(ax=ax,label="Data")
-        try:
-            fit_e_height_pdf = fit_e_height(amax_filtered*1e3,4,limits=(250,615))
-            plot_pdf_over_hist(ax,fit_e_height_pdf,amax_filtered_hist,(250,615),label="e$^-$ Height Fit")
-        except Exception as e:
-            pass
-        ax.set_title("Filtered Waveforms")
-        ax.set_ylabel(f"Waveforms / {amax_filtered_hist.axes[0].widths[0]:.0f} mV")
-        ax.legend()
-        fig.savefig("max_hist.png")
-        fig.savefig("max_hist.pdf")
-
-        fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=True)
-        for i in range(min(nWaveforms,100)):
-            #ax.plot(ts[:]*1e9,waveforms[i,:]*1e3,label="Unfiltered")
-            ax.plot(ts[:]*1e9,waveforms_filtered[i,:]*1e3,label="filtered")
-        ax.set_xlabel(f"Time [n{ts_units}]")
-        ax.set_ylabel(f"Waveform [m{waveform_units}]")
-        #ax.legend()
-        fig.savefig("waveform.png")
-        fig.savefig("waveform.pdf")
-
-        fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=True)
-        ax.plot(fft_freqs,abs(waveform_fft_amp_mean),label="Unfiltered")
-        ax.plot(fft_freqs,abs(waveform_fft_amp_mean*window_fft),label="Filtered")
-        ax.set_xlabel(f"Frequency [{ts_units}$^{{-1}}$]")
-        ax.set_ylabel(f"Waveform Amplitude [{waveform_units}]")
-        ax.set_title(f"Average Spectrum Over {nWaveforms} Waveforms")
-        ax.set_xscale("log")
-        ax.set_yscale("log")
-        ax.set_ylim(1e-2,1e3)
-        ax.legend()
-        fig.savefig("waveform_fft.png")
-        fig.savefig("waveform_fft.pdf")
-
-        fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=True)
-        ax.scatter([ts[x]*1e9 for x in argmax],amax*1e3,label="Unfiltered")
-        ax.scatter(argmax_filtered_ts*1e9,amax_filtered*1e3,label="Filtered")
-        ax.legend()
-        ax.set_xlim(-10,40)
-        ax.set_ylim(100,900)
-        ax.set_xlabel(f"Peak Maximum Time [ns]")
-        ax.set_ylabel(f"Peak Maximum [m{waveform_units}]")
-        ax.set_title(f"Peak Max vs. Arg-max for {nWaveforms} Waveforms")
-        fig.savefig("peak_maxVargmax.png")
-        fig.savefig("peak_maxVargmax.pdf")
-
-        fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=False)
-        waveform_filtered_hist.plot2d(ax=ax,norm=matplotlib.colors.PowerNorm(gamma=0.3,vmax=5000))
-        ax.set_title("Filtered Waveforms")
-        fig.savefig("waveform_hist.png")
-        fig.savefig("waveform_hist.pdf")
-
-        fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=False)
-        waveform_filtered_shifted_hist.plot2d(ax=ax,norm=matplotlib.colors.PowerNorm(gamma=0.3))#,vmax=5000))
-        ax.set_title("Filtered, Peak-shifted Waveforms")
-        fig.savefig("waveform_filtred_shifted_hist.png")
-        fig.savefig("waveform_filtred_shifted_hist.pdf")
-
-        fig, ax = mpl.subplots(figsize=(6,6),constrained_layout=False)
-        waveform_filtered_shifted_normalized_hist.plot2d(ax=ax,norm=matplotlib.colors.PowerNorm(gamma=0.3))#,vmax=5000))
-        ax.set_title("Filtered, Peak-shifted, Normalized Waveforms")
-        fig.savefig("waveform_filtred_shifted_hist.png")
-        fig.savefig("waveform_filtred_shifted_hist.pdf")
 
 if __name__ == "__main__":
     import argparse
@@ -217,5 +160,9 @@ if __name__ == "__main__":
         print("Collecting pulse waveform data...")
         fn = collect_pulser_waveform_data(ip,n_waveforms,keep_settings=args.keepsettings)
     else:
-        print(f"Analyzing pulse waveform data from file: {fn}")
-    analyze_pulses(fn)
+        print(f"Analyzing pulse waveform data from file(s): {fn}")
+    #analyze_pulses(fn)
+    fns = fn.split(" ")
+    fns = [glob.glob(fn) for fn in fns]
+    fns = [fn for sublist in fns for fn in sublist]
+    analyze_multiple_pulse_files(fns)
